@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ELION-X · CYBER DEFENSE GRID</title>
+<meta name="description" content="ELION-X — grade de defesa cibernética: detecção e rastreio de DDoS, invasão de banco de dados, ransomware e vulnerabilidades de rede">
+<link rel="icon" href="assets/elion.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;900&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/cyber.css">
+</head>
+<body>
+
+<!-- ▓▓ AMBIENTE ▓▓ -->
+<canvas id="rain" aria-hidden="true"></canvas>
+<div id="grid" aria-hidden="true"></div>
+<div id="scan" aria-hidden="true"></div>
+<div id="vig" aria-hidden="true"></div>
+<div id="alertFlash" aria-hidden="true"></div>
+
+<!-- ▓▓ POST / BOOT ▓▓ -->
+<div id="post">
+  <div class="post-inner">
+    <pre id="postArt">
+   ███████╗██╗     ██╗ ██████╗ ███╗   ██╗    ██╗  ██╗
+   ██╔════╝██║     ██║██╔═══██╗████╗  ██║    ╚██╗██╔╝
+   █████╗  ██║     ██║██║   ██║██╔██╗ ██║     ╚███╔╝
+   ██╔══╝  ██║     ██║██║   ██║██║╚██╗██║     ██╔██╗
+   ███████╗███████╗██║╚██████╔╝██║ ╚████║    ██╔╝ ██╗
+   ╚══════╝╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═══╝    ╚═╝  ╚═╝</pre>
+    <div class="post-sub">CYBER DEFENSE GRID · KERNEL DE CONTRAINTELIGÊNCIA v4.0</div>
+    <pre id="postLog"></pre>
+    <div class="post-bar"><i id="postFill"></i></div>
+    <button id="postGo" disabled>◤ ASSUMIR O CONSOLE ◢</button>
+    <div class="post-hint">simulação tática de defesa · nenhum sistema de terceiros é acessado</div>
+  </div>
+</div>
+
+<!-- ▓▓ TOPBAR ▓▓ -->
+<header id="top">
+  <div class="t-brand">
+    <span class="t-core"><i></i></span>
+    <div>
+      <div class="t-name">ELION<b>-X</b> <em>// CYBER DEFENSE GRID</em></div>
+      <div class="t-id">NÓ <span id="nodeId">ELX-000</span> · SESSÃO <span id="sessId">—</span> · UPTIME <span id="uptime">00:00:00</span></div>
+    </div>
+  </div>
+
+  <div class="t-defcon" id="defcon" data-lv="5">
+    <span class="dc-lab">DEFCON</span>
+    <div class="dc-steps">
+      <i data-l="5"></i><i data-l="4"></i><i data-l="3"></i><i data-l="2"></i><i data-l="1"></i>
+    </div>
+    <span class="dc-val" id="defconVal">5</span>
+    <span class="dc-txt" id="defconTxt">PERÍMETRO ESTÁVEL</span>
+  </div>
+
+  <div class="t-right">
+    <button class="t-btn" id="modeBtn" title="alternar entre simulação tática e telemetria real da sua máquina">
+      <i class="dot"></i><span id="modeTxt">SIMULAÇÃO</span>
+    </button>
+    <button class="t-btn" id="audioBtn" title="som tático">♪ <span id="audioTxt">OFF</span></button>
+    <button class="t-btn" id="pauseBtn" title="congelar a grade">⏸ CONGELAR</button>
+    <div class="t-clock"><span id="clk">--:--:--</span><small id="clkUtc">UTC —</small></div>
+    <button class="t-btn t-x" id="closeBtn" title="encerrar console">✕</button>
+  </div>
+</header>
+
+<!-- ▓▓ GRADE ▓▓ -->
+<main id="app">
+
+  <!-- ══ COLUNA ESQUERDA — SENSORES ══ -->
+  <aside class="col" id="colL">
+
+    <section class="pan">
+      <header class="ph"><h2>◈ SENSORES DE INTRUSÃO</h2><span class="ph-live">MONITORANDO</span></header>
+      <div class="pb sensors" id="sensors">
+        <!-- injetado por cyber.js -->
+      </div>
+    </section>
+
+    <section class="pan grow">
+      <header class="ph"><h2>▤ TRÁFEGO DE BORDA</h2><span class="ph-tag" id="bpsTag">0 Gbps</span></header>
+      <div class="pb">
+        <canvas id="trafficCv" class="cv"></canvas>
+        <div class="mini-legend">
+          <span><i class="k-ok"></i>LEGÍTIMO</span>
+          <span><i class="k-bad"></i>MALICIOSO</span>
+          <span><i class="k-drop"></i>DESCARTADO</span>
+        </div>
+        <div class="kv">
+          <div><b id="ppsVal">0</b><small>PACOTES/s</small></div>
+          <div><b id="connVal">0</b><small>SESSÕES</small></div>
+          <div><b id="dropVal">0%</b><small>SCRUBBING</small></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="pan">
+      <header class="ph"><h2>⧉ INTEGRIDADE DE ARQUIVOS</h2><span class="ph-tag" id="fimTag">NOMINAL</span></header>
+      <div class="pb">
+        <canvas id="entropyCv" class="cv sm"></canvas>
+        <div class="fim-row">
+          <span>ENTROPIA <b id="entVal">3.9</b>/8.0</span>
+          <span>ESCRITAS/s <b id="wrVal">12</b></span>
+        </div>
+        <div class="fim-note" id="fimNote">nenhuma criptografia em massa detectada</div>
+      </div>
+    </section>
+  </aside>
+
+  <!-- ══ CENTRO ══ -->
+  <section id="colC">
+
+    <section class="pan map-pan">
+      <header class="ph">
+        <h2>⊕ MAPA GLOBAL DE AMEAÇAS</h2>
+        <div class="map-stats">
+          <span><b id="mRate">0</b> ataques/min</span>
+          <span class="ok"><b id="mBlocked">0</b> neutralizados</span>
+          <span class="bad"><b id="mActive">0</b> ativos</span>
+        </div>
+      </header>
+      <div class="pb map-body">
+        <canvas id="mapCv" class="cv"></canvas>
+        <div class="map-legend">
+          <span><i style="--c:#ff2a4a"></i>DDoS</span>
+          <span><i style="--c:#ff8a00"></i>BANCO DE DADOS</span>
+          <span><i style="--c:#c04bff"></i>RANSOMWARE</span>
+          <span><i style="--c:#ffd23f"></i>VULNERABILIDADE</span>
+          <span><i style="--c:#00e5ff"></i>RECONHECIMENTO</span>
+          <span><i style="--c:#00ff9d"></i>ATIVO PROTEGIDO</span>
+        </div>
+        <div class="map-corner tl">LAT/LON · PROJEÇÃO EQUIRETANGULAR</div>
+        <div class="map-corner tr" id="mapMode">FONTE: SIMULAÇÃO TÁTICA</div>
+      </div>
+    </section>
+
+    <div class="row2">
+      <section class="pan">
+        <header class="ph"><h2>⬡ TOPOLOGIA DA REDE</h2><span class="ph-tag" id="topoTag">0/0 COMPROMETIDOS</span></header>
+        <div class="pb"><canvas id="topoCv" class="cv"></canvas></div>
+      </section>
+
+      <section class="pan">
+        <header class="ph"><h2>◎ VARREDURA ATIVA</h2><span class="ph-tag" id="radarTag">SWEEP 360°</span></header>
+        <div class="pb"><canvas id="radarCv" class="cv"></canvas></div>
+      </section>
+    </div>
+
+    <section class="pan term-pan">
+      <header class="ph">
+        <h2>❯ CONSOLE OPERACIONAL</h2>
+        <span class="ph-tag">root@elion-x:~# — digite <b>ajuda</b></span>
+      </header>
+      <div class="pb term-body">
+        <div id="term" class="term"></div>
+        <div class="term-in">
+          <span class="tp">root@elion-x</span><span class="tp2">:~#</span>
+          <input id="cmd" autocomplete="off" spellcheck="false" placeholder="analisar · killchain · dossie · denunciar · varredura · mitigar · lockdown · doutrina · real">
+          <span class="tcur"></span>
+        </div>
+      </div>
+    </section>
+  </section>
+
+  <!-- ══ COLUNA DIREITA ══ -->
+  <aside class="col" id="colR">
+
+    <section class="pan grow">
+      <header class="ph">
+        <h2>⚠ FLUXO DE AMEAÇAS</h2>
+        <button class="ph-btn" id="feedClear" title="limpar fluxo">⌫</button>
+      </header>
+      <div class="pb"><div id="feed" class="feed"></div></div>
+    </section>
+
+    <section class="pan grow" id="panAnalysis">
+      <header class="ph"><h2>⊛ NÚCLEO COGNITIVO · ANÁLISE</h2><span class="ph-tag" id="analystTag">OCIOSO</span></header>
+      <div class="pb an-body">
+        <div id="anEmpty" class="an-empty">
+          selecione uma ameaça no fluxo — o ELION reconstrói a <b>cadeia de ataque</b> (kill chain), mapeia a <b>técnica MITRE ATT&amp;CK</b>, prevê o próximo passo do atacante e recomenda a defesa.
+          <span class="an-empty-cmd">comandos: <b>analisar &lt;ip|id&gt;</b> · <b>dossie</b> · <b>denunciar</b> · <b>doutrina</b></span>
+        </div>
+        <div id="anCard" class="an-card" hidden>
+          <div id="anHead" class="an-head"></div>
+          <div class="an-kc">
+            <div class="an-lab">◈ CYBER KILL CHAIN <em id="kcStageTxt">—</em></div>
+            <div id="killchain" class="killchain"></div>
+          </div>
+          <div id="mitreLine" class="mitre-line"></div>
+          <div class="an-lab">⊛ RACIOCÍNIO DO ANALISTA <em id="cogSrc">local</em></div>
+          <div id="cognition" class="cognition"></div>
+          <div class="an-lab">⌖ RASTREAMENTO DE ORIGEM</div>
+          <div id="trace" class="trace"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="pan">
+      <header class="ph"><h2>⛨ CONTRAMEDIDAS</h2><span class="ph-tag" id="cmTag">PRONTO</span></header>
+      <div class="pb cms" id="cms">
+        <div class="cm-group">CONTENÇÃO</div>
+        <button class="cm" data-a="mitigate"><b>⟲ MITIGAR</b><small>scrubbing + rate-limit no alvo</small></button>
+        <button class="cm" data-a="blackhole"><b>⊘ BLACKHOLE</b><small>descarta o prefixo de origem</small></button>
+        <button class="cm" data-a="isolate"><b>⧈ ISOLAR NÓ</b><small>quarentena de segmento</small></button>
+        <button class="cm" data-a="kill"><b>✖ ENCERRAR PROCESSO</b><small>mata o processo malicioso</small></button>
+        <button class="cm" data-a="rollback"><b>↺ RESTAURAR</b><small>snapshot pré-criptografia</small></button>
+        <div class="cm-group">DEFESA ATIVA <em>· legal · sem hack-back</em></div>
+        <button class="cm" data-a="honeypot"><b>◈ HONEYPOT</b><small>desvia o atacante p/ isca</small></button>
+        <button class="cm" data-a="sinkhole"><b>⇲ SINKHOLE/TARPIT</b><small>drena e prende a sessão</small></button>
+        <button class="cm" data-a="deception"><b>❖ TOKENS DE ENGANO</b><small>iscas que denunciam acesso</small></button>
+        <button class="cm" data-a="dossier"><b>▤ DOSSIÊ</b><small>reúne evidência + atribuição</small></button>
+        <button class="cm" data-a="abuse"><b>✉ DENUNCIAR</b><small>reporta ao provedor/CERT da origem</small></button>
+        <button class="cm cm-wide" data-a="lockdown"><b>⛔ LOCKDOWN TOTAL</b><small>fecha o perímetro — corta toda sessão externa</small></button>
+      </div>
+    </section>
+
+    <section class="pan">
+      <header class="ph"><h2>◱ SUPERFÍCIE EXPOSTA</h2><span class="ph-tag" id="cveTag">0 ACHADOS</span></header>
+      <div class="pb"><div id="cves" class="cves"></div></div>
+    </section>
+  </aside>
+</main>
+
+<div id="toasts"></div>
+
+<script src="assets/cyber.js"></script>
+</body>
+</html>

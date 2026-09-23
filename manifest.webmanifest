@@ -1,0 +1,33 @@
+{
+  "name": "ELION-X · Central de Comando IA",
+  "short_name": "ELION-X",
+  "description": "Inteligência artificial classe JARVIS — central de comando pessoal do operador.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#010710",
+  "theme_color": "#010710",
+  "categories": ["productivity", "business", "utilities"],
+  "icons": [
+    { "src": "assets/elion.png", "sizes": "256x256", "type": "image/png", "purpose": "any" },
+    { "src": "assets/elion-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/elion-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Falar ao vivo",
+      "short_name": "AO VIVO",
+      "description": "Abre direto no modo de conversa em tempo real",
+      "url": "./index.html?modo=live"
+    },
+    {
+      "name": "Painel de Controle",
+      "short_name": "Painel",
+      "description": "Segundo cérebro — grafo de conhecimento do ELION",
+      "url": "./brain.html"
+    }
+  ]
+}

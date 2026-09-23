@@ -1,0 +1,71 @@
+# Segurança — NUNCA commitar a API Key
+.env
+.env.local
+.env.production
+
+# Segurança — DADOS PESSOAIS E CREDENCIAIS DE RUNTIME (nunca versionar)
+#   google-token.json = token OAuth ativo do Gmail
+#   wa-session/       = sessão autenticada do WhatsApp (permite personificar o operador)
+#   faces.json        = biometria facial da família
+#   memory/agenda/portfolio/wa-log = dados pessoais do operador
+data/
+.wwebjs_cache/
+.wwebjs_auth/
+
+# Dependências
+node_modules/
+
+# Build e deploy temporário
+deploy/
+dist/
+
+# Binários pesados — inviabilizam o clone (baixar/instalar à parte)
+#   cloudflared.exe (~52 MB) = túnel do acesso mobile
+#   *.glb (~30 MB)           = modelos 3D do avatar
+bin/
+assets/avatar/*.glb
+
+# Material de trabalho e de clientes — NÃO é código da plataforma
+docs/*.docx
+docs/_build/
+*.kmz
+spal-*.png
+satelite-*.png
+google-hybrid-*.png
+av-*.kmz
+image-*.jpg
+banner*.png
+spal-mapa-interativo.html
+my-video/
+
+# Projetos paralelos com ciclo de vida próprio
+cnpj-consulta/
+
+# Versões antigas — a versão ativa é server.js + index.html + assets/
+legacy/
+src/
+server/
+vite.config.js
+avatar-test.html
+
+# Ferramental local do editor/agente
+.claude/
+
+# Backups do proprio codigo — dois server.js no repositorio confundem quem le,
+# e o backup carrega uma copia velha do prompt de persona (dados pessoais)
+*.bak-*
+*.bak
+
+# Artefatos de teste de leitura de documento — nao sao codigo da plataforma
+cellar_notice.xml
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Marca de terceiros (empregador) — nao pertence a um projeto pessoal publico
+assets/logos/

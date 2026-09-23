@@ -1,0 +1,959 @@
+<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>ELION-X · Painel de Controle · Segundo Cérebro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg0:#010710;--panel:rgba(3,15,28,.84);
+    --cyan:#00e5ff;--cyan-soft:#5cf2ff;--green:#00ff9d;--violet:#c084fc;--violet-d:#a855f7;
+    --gold:#ffc44d;--red:#ff2a4a;--text:#c9e9f8;--muted:rgba(155,208,238,.55);
+    --border:rgba(0,229,255,.18);--f-hud:'Orbitron',monospace;--f-ui:'Rajdhani',sans-serif;--f-mono:'Share Tech Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--text);font-family:var(--f-ui);user-select:none}
+  /* width/height 100% são OBRIGATÓRIOS: em elemento substituído (canvas), o
+     inset:0 NÃO determina a largura — ela vem do tamanho intrínseco do buffer.
+     Com devicePixelRatio > 1 (tela 125%/150%, comum em notebook Windows) o
+     buffer fica maior que a janela e o canvas transborda: só o canto superior
+     esquerdo aparece e o resto da cena — Sol incluído — some da tela. */
+  canvas#cosmos{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0;pointer-events:none}
+  canvas#graph{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:1;background:transparent;touch-action:none;opacity:0;transition:opacity 1.1s ease}
+  canvas#graph.on{opacity:1}
+  /* ── TOP BAR ── */
+  #top{position:fixed;top:0;left:0;right:0;height:58px;display:flex;align-items:center;gap:14px;
+    padding:0 18px;background:linear-gradient(180deg,rgba(2,12,24,.92),rgba(2,12,24,0));z-index:10}
+  .brand{font-family:var(--f-hud);font-weight:900;letter-spacing:3px;font-size:15px;color:#eafcff;
+    text-shadow:0 0 18px rgba(0,229,255,.5);white-space:nowrap}
+  .brand b{color:var(--cyan)}
+  .sub{font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:var(--muted);margin-top:2px}
+  #search{flex:1;max-width:360px;background:rgba(0,18,34,.7);border:1px solid var(--border);border-radius:8px;
+    color:var(--text);font-family:var(--f-mono);font-size:13px;padding:9px 12px;outline:none}
+  #search:focus{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(0,229,255,.15)}
+  .tbtn{background:rgba(0,229,255,.08);border:1px solid var(--border);border-radius:8px;color:var(--cyan);
+    font-family:var(--f-hud);font-size:11px;letter-spacing:2px;padding:9px 14px;cursor:pointer;transition:.15s;white-space:nowrap}
+  .tbtn:hover{background:rgba(0,229,255,.2);box-shadow:0 0 18px rgba(0,229,255,.35)}
+  .tbtn.g{color:var(--green);border-color:rgba(0,255,157,.3);background:rgba(0,255,157,.08)}
+  .stat{font-family:var(--f-mono);font-size:11px;color:var(--muted);text-align:right;line-height:1.5;white-space:nowrap}
+  .stat b{color:var(--cyan-soft)} .stat i{color:var(--gold);font-style:normal}
+  /* ── LEGEND ── */
+  #legend{position:fixed;left:18px;bottom:18px;z-index:10;background:var(--panel);border:1px solid var(--border);
+    border-radius:10px;padding:12px 14px;backdrop-filter:blur(8px);font-family:var(--f-mono);font-size:11px}
+  #legend .lrow{display:flex;align-items:center;gap:8px;margin:5px 0;color:var(--muted)}
+  #legend .dot{width:11px;height:11px;border-radius:50%}
+  #legend .dash{width:16px;height:0;border-top:2px dashed var(--gold)}
+  /* ── OBSIDIAN PANEL ── */
+  #obs{position:fixed;right:18px;bottom:18px;z-index:10;width:320px;background:var(--panel);border:1px solid rgba(192,132,252,.3);
+    border-radius:12px;padding:14px;backdrop-filter:blur(8px)}
+  #obs h3{font-family:var(--f-hud);font-size:12px;letter-spacing:2px;color:var(--violet);margin-bottom:4px}
+  #obs .os{font-family:var(--f-mono);font-size:10.5px;color:var(--muted);margin-bottom:10px;line-height:1.5}
+  #obs input{width:100%;background:rgba(20,8,34,.6);border:1px solid rgba(192,132,252,.3);border-radius:6px;
+    color:var(--text);font-family:var(--f-mono);font-size:11.5px;padding:8px 10px;outline:none;margin-bottom:8px}
+  #obs input:focus{border-color:var(--violet)}
+  #obs button{width:100%;background:rgba(168,85,247,.14);border:1px solid rgba(192,132,252,.4);border-radius:6px;
+    color:var(--violet);font-family:var(--f-hud);font-size:11px;letter-spacing:2px;padding:9px;cursor:pointer;transition:.15s}
+  #obs button:hover{background:rgba(168,85,247,.26)}
+  #obsStatus{font-family:var(--f-mono);font-size:10.5px;margin-top:8px;line-height:1.5}
+  /* ── DETAIL SIDEBAR ── */
+  #detail{position:fixed;top:70px;right:-380px;width:340px;max-height:calc(100vh - 200px);overflow:auto;z-index:11;
+    background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;backdrop-filter:blur(10px);
+    transition:right .3s cubic-bezier(.22,1,.36,1)}
+  #detail.on{right:18px}
+  #detail .dtag{display:inline-block;font-family:var(--f-hud);font-size:9px;letter-spacing:2px;padding:3px 8px;border-radius:4px;margin-bottom:8px}
+  #detail h2{font-size:19px;font-weight:700;color:#eafcff;line-height:1.2;margin-bottom:6px}
+  #detail .dmeta{font-family:var(--f-mono);font-size:11.5px;color:var(--muted);line-height:1.7}
+  #detail .dmeta b{color:var(--cyan-soft)}
+  #detail .dex{margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);font-size:13px;line-height:1.5;color:var(--text)}
+  #detail .dtags{margin-top:10px;display:flex;flex-wrap:wrap;gap:5px}
+  #detail .dtags span{font-family:var(--f-mono);font-size:10px;color:var(--violet);border:1px solid rgba(192,132,252,.3);border-radius:20px;padding:2px 8px}
+  #detail .obtn{display:block;width:100%;margin-top:12px;background:rgba(168,85,247,.16);border:1px solid rgba(192,132,252,.45);
+    border-radius:7px;color:#e9d5ff;font-family:var(--f-hud);font-size:10.5px;letter-spacing:2px;padding:10px;cursor:pointer;text-align:center;text-decoration:none}
+  #detail .obtn:hover{background:rgba(168,85,247,.3)}
+  #detClose{position:absolute;top:12px;right:14px;background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer}
+  #detClose:hover{color:var(--cyan)}
+  #tip{position:fixed;z-index:12;pointer-events:none;background:rgba(2,14,26,.92);border:1px solid var(--border);
+    border-radius:6px;padding:5px 9px;font-size:12px;color:#dff4ff;opacity:0;transition:opacity .12s;white-space:nowrap}
+  #tip small{display:block;font-family:var(--f-mono);font-size:9.5px;color:var(--muted);letter-spacing:1px}
+  #hint{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:9;font-family:var(--f-mono);
+    font-size:10.5px;color:var(--muted);opacity:.65;letter-spacing:1px;text-align:center}
+  #toast{position:fixed;top:66px;left:50%;transform:translateX(-50%);z-index:20;background:var(--panel);
+    border:1px solid var(--border);border-radius:8px;padding:9px 16px;font-size:12px;opacity:0;transition:.3s;pointer-events:none}
+  #toast.on{opacity:1}
+  @media(max-width:720px){#obs{width:min(86vw,300px)}#legend{display:none}.stat{display:none}#hint{display:none}
+    #detail{width:min(88vw,340px)}}
+</style></head>
+<body>
+<canvas id="cosmos"></canvas>
+<canvas id="graph"></canvas>
+
+<div id="top">
+  <div>
+    <div class="brand">⬡ PAINEL DE <b>CONTROLE</b></div>
+    <div class="sub">SEGUNDO CÉREBRO · MALHA NEURAL ELION-X</div>
+  </div>
+  <input id="search" placeholder="buscar nó… (Enter voa até ele)">
+  <button class="tbtn" id="refresh">⟳ ATUALIZAR</button>
+  <button class="tbtn g" id="fitBtn">⊹ CENTRALIZAR</button>
+  <button class="tbtn" id="back" onclick="location.href='/'">← ELION</button>
+  <div class="stat" id="stats">carregando…</div>
+</div>
+
+<div id="legend"></div>
+
+<div id="obs">
+  <h3>◇ OBSIDIAN · SECOND BRAIN</h3>
+  <div class="os">Conecte seu vault (somente leitura). As notas viram nós ligados pelos <b>[[links]]</b> — e a <b style="color:var(--gold)">fusão dourada</b> conecta sozinha nota ↔ registro do ELION sobre o mesmo assunto.</div>
+  <input id="obsPath" placeholder="C:\Users\...\Second-brain" autocomplete="off">
+  <button id="obsConnect">CONECTAR VAULT</button>
+  <div id="obsStatus"></div>
+</div>
+
+<div id="detail">
+  <button id="detClose">✕</button>
+  <div id="detBody"></div>
+</div>
+
+<div id="tip"></div>
+<div id="hint">arraste p/ mover · roda p/ zoom · clique num nó = voar + detalhes · duplo-clique num nó = soltar · ESC fecha</div>
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="/assets/cosmos.js" defer></script>
+<script>
+/* ════════════════ SEGUNDO CÉREBRO — motor de grafo neural (zero deps) ════════════════ */
+const GROUPS = {
+  core:          {c:'#00e5ff', label:'ELION‑X (núcleo)'},
+  capability:    {c:'#5cf2ff', label:'Funções'},
+  record:        {c:'#00ff9d', label:'Registros / tarefas'},
+  'obsidian-hub':{c:'#a855f7', label:'Obsidian (hub)'},
+  obsidian:      {c:'#c084fc', label:'Notas Obsidian'},
+  // âmbar para o hábito: distingue o que o operador FEZ do que ele GUARDOU
+  'activity-hub':{c:'#ffb020', label:'Memória de trabalho'},
+  activity:      {c:'#ffd166', label:'Uso registrado'},
+};
+const LINKC = { core:'rgba(0,229,255,.42)', rec:'rgba(0,255,157,.22)', wiki:'rgba(192,132,252,.38)',
+                bridge:'rgba(255,196,77,.55)', hub:'rgba(168,85,247,.22)', fusion:'rgba(255,196,77,.5)',
+                habito:'rgba(255,176,32,.30)', sys:'rgba(0,229,255,.3)' };
+const PULSEC = { core:'#8ff4ff', rec:'#5cffc2', wiki:'#e0c3ff', bridge:'#ffd77e', hub:'#c084fc', fusion:'#ffd77e',
+                 habito:'#ffd166', sys:'#8ff4ff' };
+const CURV = { wiki:0.16, fusion:0.22, bridge:0.12, core:0.09, rec:0.07, hub:0.10, habito:0.20, sys:0.08 };
+const DIST = { wiki:70, fusion:170, bridge:260, core:130, rec:95, hub:85, habito:150, sys:110 };
+
+const cv = document.getElementById('graph'), ctx = cv.getContext('2d');
+let W=0,H=0,DPR=1;
+let nodes=[], links=[], byId=new Map();
+let scale=1, panX=0, panY=0, alpha=1, cam=null;
+let hover=null, selected=null, drag=null, dragMoved=false, panning=null;
+let query='', firstLoad=true, OBS={vaultName:''};
+let pulses=[], pulseT=0, stars=[], neb=null, vessels=[], bright=[], clines=[];
+const hexA=(h,a)=>{ h=h.replace('#',''); const n=parseInt(h,16); return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`; };
+/* corrente correndo: vermelho → amarelo → azul (neon) conforme a fase ph */
+function flowCol(ph,a){ ph-=Math.floor(ph);
+  const S=[[255,45,75],[255,205,60],[40,150,255]], seg=ph*3, i=seg|0, f=seg-i, c0=S[i%3], c1=S[(i+1)%3];
+  return `rgba(${(c0[0]+(c1[0]-c0[0])*f)|0},${(c0[1]+(c1[1]-c0[1])*f)|0},${(c0[2]+(c1[2]-c0[2])*f)|0},${a})`; }
+const t0=performance.now();
+
+function resize(){ DPR=Math.min(devicePixelRatio||1,2); W=innerWidth; H=innerHeight;
+  cv.width=W*DPR; cv.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); makeSky(); makeSistemaSolar(); }
+addEventListener('resize', resize);
+
+/* ── céu: nebulosa (offscreen) + estrelas com cintilar ── */
+function makeSky(){
+  stars = Array.from({length: Math.round(W*H/9000)}, ()=>({ x:Math.random()*W, y:Math.random()*H,
+    r:Math.random()*1.4+0.3, p:Math.random()*7, l:Math.random()<0.5?0.008:0.02 }));
+  neb = document.createElement('canvas'); neb.width=W; neb.height=H;
+  const g = neb.getContext('2d');
+  g.fillStyle='#010710'; g.fillRect(0,0,W,H);
+  const blob=(x,y,r,c)=>{ const rg=g.createRadialGradient(x,y,0,x,y,r); rg.addColorStop(0,c); rg.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle=rg; g.fillRect(0,0,W,H); };
+  blob(W*0.5, H*0.35, Math.max(W,H)*0.55, 'rgba(6,42,74,0.55)');
+  blob(W*0.82, H*0.75, Math.max(W,H)*0.4, 'rgba(58,18,92,0.35)');
+  blob(W*0.15, H*0.8, Math.max(W,H)*0.38, 'rgba(2,58,48,0.3)');
+  blob(W*0.5, H*0.5, Math.max(W,H)*0.2, 'rgba(10,60,90,0.25)');
+  // galáxias espirais (estáticas no fundo) — reluzentes
+  const gh=['120,180,255','200,150,255','120,255,220','255,190,140'];
+  for(let gi=0; gi<3; gi++){
+    const gx=Math.random()*W, gy=Math.random()*H, gr=Math.max(W,H)*(0.05+Math.random()*0.06), hue=gh[(Math.random()*gh.length)|0];
+    const rg=g.createRadialGradient(gx,gy,0,gx,gy,gr);
+    rg.addColorStop(0,`rgba(${hue},0.55)`); rg.addColorStop(0.3,`rgba(${hue},0.16)`); rg.addColorStop(1,`rgba(${hue},0)`);
+    g.fillStyle=rg; g.beginPath(); g.arc(gx,gy,gr,0,7); g.fill();
+    const rot=Math.random()*6;
+    for(let a=0;a<2;a++) for(let s=0;s<80;s++){
+      const rr=(s/80)*gr, ang=rot+a*Math.PI+(s/80)*3.4;
+      g.globalAlpha=0.7*(1-s/80); g.fillStyle=s<6?'#ffffff':'#dff0ff'.replace('ff0','e8f');
+      g.fillRect(gx+Math.cos(ang)*rr+(Math.random()-.5)*gr*0.05, gy+Math.sin(ang)*rr+(Math.random()-.5)*gr*0.05, 1.2,1.2);
+    }
+    g.globalAlpha=1;
+  }
+  makeVessels(); makeConstellations();
+}
+/* ── constelações reluzentes (estrelas brilhantes ligadas + flares) ── */
+function makeConstellations(){
+  bright = Array.from({length: Math.round(30 + W*H/26000)}, ()=>({
+    x:Math.random()*W, y:Math.random()*H, r:1.2+Math.random()*2.4, p:Math.random()*7,
+    tw:0.5+Math.random()*1.3, c: Math.random()<0.66?'#eaf4ff':(Math.random()<0.5?'#bcd8ff':'#e9d5ff') }));
+  clines=[]; const R2=(Math.min(W,H)*0.13)**2;
+  for(let i=0;i<bright.length;i++){ let best=-1,bd=R2;
+    for(let j=0;j<bright.length;j++){ if(i===j)continue; const dx=bright[i].x-bright[j].x,dy=bright[i].y-bright[j].y,d2=dx*dx+dy*dy; if(d2<bd){bd=d2;best=j;} }
+    if(best>=0 && i<best) clines.push([i,best]); }
+}
+function drawConstellations(t){
+  ctx.strokeStyle='rgba(150,190,255,0.10)'; ctx.lineWidth=0.7; ctx.beginPath();
+  for(const [i,j] of clines){ ctx.moveTo(bright[i].x,bright[i].y); ctx.lineTo(bright[j].x,bright[j].y); } ctx.stroke();
+  ctx.globalCompositeOperation='lighter';
+  for(const s of bright){
+    const tw=0.4+0.6*Math.max(0,Math.sin(t*s.tw+s.p)), R=s.r*(0.8+tw*0.8);
+    const rg=ctx.createRadialGradient(s.x,s.y,0,s.x,s.y,R*4.5);
+    rg.addColorStop(0,s.c); rg.addColorStop(0.4,hexA('#78aaff',tw*0.45)); rg.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.globalAlpha=tw; ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(s.x,s.y,R*4.5,0,7); ctx.fill();
+    const fl=R*3.4*tw; ctx.globalAlpha=tw*0.85; ctx.strokeStyle=s.c; ctx.lineWidth=0.9;
+    ctx.beginPath(); ctx.moveTo(s.x-fl,s.y); ctx.lineTo(s.x+fl,s.y); ctx.moveTo(s.x,s.y-fl); ctx.lineTo(s.x,s.y+fl); ctx.stroke();
+    ctx.globalAlpha=1; ctx.fillStyle='#ffffff'; ctx.beginPath(); ctx.arc(s.x,s.y,R*0.55,0,7); ctx.fill();
+  }
+  ctx.globalCompositeOperation='source-over'; ctx.globalAlpha=1;
+}
+/* ═══════════════════════════════════════════════════════════════════════════
+   SISTEMA SOLAR — corpos com ROTAÇÃO REAL
+
+   A diferença entre um círculo com degradê e um planeta é a PROJEÇÃO. Aqui
+   cada corpo tem uma textura equirretangular (mapa 2:1, como um planisfério)
+   que é reprojetada na esfera a cada quadro em fatias verticais. Como fatias
+   iguais na tela correspondem a arcos DESIGUAIS de longitude (relação arco-
+   seno), a textura comprime sozinha na borda — é o que dá a leitura de volume
+   e permite girar de verdade, não fingir com um degradê deslizando.
+
+   A textura é pintada UMA vez. Só a reprojeção roda a 60 fps.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let SOL=null, LUA=null, PLANETAS=[], solPos={x:0,y:0,r:0};
+
+/* ── ruído de valor com oitavas: base de toda textura orgânica ── */
+function ruidoBase(w,h,semente){
+  let s=semente>>>0||1; const rnd=()=>{ s^=s<<13; s^=s>>>17; s^=s<<5; return (s>>>0)/4294967296; };
+  const g=new Float32Array(w*h); for(let i=0;i<g.length;i++) g[i]=rnd();
+  /* O ruído tem de REPETIR nos DOIS eixos. Travar o y (clamp) fazia toda
+     oitava fina cair na última linha da grade e ficar constante na vertical —
+     resultado: listras verticais gritantes na textura. */
+  return { g,w,h, at(x,y){
+    x=((x%w)+w)%w; y=((y%h)+h)%h;
+    const x0=x|0, y0=y|0, fx=x-x0, fy=y-y0, x1=(x0+1)%w, y1=(y0+1)%h;
+    const a=this.g[y0*w+x0], b=this.g[y0*w+x1], c=this.g[y1*w+x0], d=this.g[y1*w+x1];
+    const u=fx*fx*(3-2*fx), v=fy*fy*(3-2*fy);
+    return (a*(1-u)+b*u)*(1-v)+(c*(1-u)+d*u)*v;
+  }};
+}
+function fbm(campos,x,y,oit){ let v=0,a=0.5,f=1;
+  for(let o=0;o<oit;o++){ v+=campos[o%campos.length].at(x*f,y*f)*a; a*=0.5; f*=2; } return v; }
+
+/* ═══ AMOSTRAGEM QUE FECHA O CICLO ═══
+   A textura é um planisfério: a borda direita encosta na esquerda. Para a
+   emenda sumir, o ruído tem de dar volta INTEIRA no eixo x — ou seja, ao
+   percorrer a largura toda, a coordenada precisa avançar um número INTEIRO de
+   células da grade. Multiplicador fracionário (u*0.11) deixava a costura
+   visível como um risco vertical no meio da esfera.
+   un e vn são normalizados (0..1) e as frequências, inteiras.               */
+/* Não basta a frequência ser inteira: ela tem de ser MÚLTIPLA da grade, senão
+   a volta não cai no ponto de partida. A solução é dar a cada oitava a SUA
+   grade e amostrá-la sempre no tamanho natural — assim un=1 recai exatamente
+   em un=0, qualquer que seja a oitava. */
+function ruidoOitavas(semente){
+  return [4,8,16,32,64].map((w,i)=>ruidoBase(w, Math.max(2,w>>1), semente*(i*7+13)+i*31+1));
+}
+function oitava(N,k,un,vn){ const g=N[Math.min(k,N.length-1)]; return g.at(un*g.w, vn*g.h); }
+/* soma normalizada das oitavas de..até — devolve 0..1 */
+function fbmO(N,un,vn,de,ate){
+  let v=0,a=0.5,s=0;
+  for(let k=de;k<=ate&&k<N.length;k++){ v+=oitava(N,k,un,vn)*a; s+=a; a*=0.5; }
+  return s? v/s : 0.5;
+}
+const mix=(a,b,t)=>a+(b-a)*t;
+const lerpCor=(c1,c2,t)=>[mix(c1[0],c2[0],t)|0, mix(c1[1],c2[1],t)|0, mix(c1[2],c2[2],t)|0];
+
+/* ── textura equirretangular (planisfério 2:1), duplicada na horizontal para
+      a costura da rotação nunca precisar de dois desenhos ── */
+function texturaEquir(tipo, TW){
+  const TH=TW>>1;
+  const c=document.createElement('canvas'); c.width=TW*2; c.height=TH;
+  const g=c.getContext('2d');
+  const img=g.createImageData(TW,TH), D=img.data;
+  const semente={mercurio:11,venus:23,terra:37,marte:53,jupiter:71,saturno:89,
+                 urano:101,netuno:113,plutao:131,lua:149,sol:167}[tipo]||7;
+  const N=ruidoOitavas(semente);
+
+  for(let y=0;y<TH;y++){
+    const lat=(y/TH)*2-1;                    // -1 polo sul · +1 polo norte
+    for(let x=0;x<TW;x++){
+      const un=x/TW, vn=y/TH;
+      let r,gr,b,al=255;
+      const n=fbmO(N,un,vn,1,3), n2=fbmO(N,un+0.17,vn+0.11,3,4);
+
+      if(tipo==='terra'){
+        /* CONTINENTE precisa de ruído de BAIXA frequência. Com frequência alta
+           o limiar recorta pontilhado, não massa de terra — foi o que estragou
+           a primeira versão. Duas oitavas largas dão a forma; uma terceira,
+           fraca, só recorta a costa. */
+        /* pesos MUITO desiguais: a oitava larga manda na forma do continente e
+           as finas só rendilham a costa. Pesos parecidos picotavam a massa de
+           terra em arquipélago. */
+        const forma=oitava(N,1,un,vn)*0.68 + oitava(N,2,un+0.11,vn+0.07)*0.24 + oitava(N,3,un+0.31,vn+0.19)*0.08;
+        const cont=forma + (0.10 - Math.abs(lat)*0.14);   // um pouco mais de terra no equador
+        const gelo=Math.abs(lat)>0.83 ? (Math.abs(lat)-0.83)/0.17 : 0;
+        if(cont>0.50){
+          const alt=Math.min(1,(cont-0.50)/0.26);
+          const selva=[38,96,48], campo=[92,124,58], deserto=[176,148,92], serra=[122,110,96];
+          let c1=lerpCor(selva,campo, Math.min(1,Math.abs(lat)*1.6));
+          c1=lerpCor(c1,deserto, Math.max(0,Math.min(1,(Math.abs(lat)-0.18)*2.4)));
+          c1=lerpCor(c1,serra, Math.pow(alt,1.6));
+          [r,gr,b]=c1;
+        } else {
+          const prof=Math.min(1,(0.50-cont)/0.34);        // plataforma → abissal
+          [r,gr,b]=lerpCor([40,132,190],[4,20,66], Math.pow(prof,0.75));
+        }
+        if(gelo>0) [r,gr,b]=lerpCor([r,gr,b],[238,248,255], Math.min(1,gelo*1.5));
+        // nuvens: véu fino e esgarçado, nunca placas — limiar alto e transição longa
+        const nuv=oitava(N,2,un+0.41,vn+0.17)*0.6 + oitava(N,3,un+0.05,vn+0.29)*0.4;
+        const faixaNuv=0.5+0.5*Math.sin(lat*4.4);          // cinturões equatoriais
+        const densi=nuv*0.80+faixaNuv*0.20;
+        if(densi>0.62) [r,gr,b]=lerpCor([r,gr,b],[250,253,255], Math.min(0.80,(densi-0.62)*2.1));
+      }
+      else if(tipo==='marte'){
+        // regiões de albedo largas (Syrtis, Hellas) + poeira fina por cima
+        const largo=oitava(N,1,un,vn)*0.68 + oitava(N,2,un+0.05,vn+0.02)*0.32;
+        const poeira=oitava(N,4,un+0.23,vn+0.09);
+        let base=lerpCor([206,118,72],[146,68,40], largo);
+        if(largo>0.60) base=lerpCor(base,[96,54,42], Math.min(1,(largo-0.60)*2.6));  // terreno escuro
+        if(largo<0.32) base=lerpCor(base,[224,158,108], Math.min(1,(0.32-largo)*2.8)); // planície clara
+        [r,gr,b]=lerpCor(base,[188,104,62],(poeira-0.5)*0.5);
+        if(Math.abs(lat)>0.85){ const t=(Math.abs(lat)-0.85)/0.15; [r,gr,b]=lerpCor([r,gr,b],[246,244,240],Math.min(1,t*1.7)); }
+      }
+      else if(tipo==='jupiter'||tipo==='saturno'){
+        // faixas: latitude dominante + turbulência que ondula a fronteira
+        const nb=tipo==='jupiter'?9:7;
+        const onda=fbmO(N,un,vn,1,3)*0.16;
+        const fase=(lat+onda)*nb;
+        const t=0.5+0.5*Math.sin(fase*Math.PI);
+        const claro= tipo==='jupiter'?[236,214,178]:[238,224,186];
+        const escuro=tipo==='jupiter'?[164,104,62]:[196,166,116];
+        [r,gr,b]=lerpCor(escuro,claro,t);
+        const turb=fbmO(N,un+0.17,vn+0.03,2,4);           // vórtices dentro da faixa
+        [r,gr,b]=lerpCor([r,gr,b], t>0.5?claro:escuro, (turb-0.5)*0.5);
+        if(tipo==='jupiter'){                            // Grande Mancha Vermelha
+          const dx=(un-0.30)*2.2, dy=(lat+0.30)*3.4, d=dx*dx+dy*dy;
+          if(d<1){ const t2=Math.pow(1-d,0.7); [r,gr,b]=lerpCor([r,gr,b],[188,84,58],t2*0.92); }
+        }
+      }
+      else if(tipo==='urano'||tipo==='netuno'){
+        const claro= tipo==='urano'?[196,238,240]:[92,140,232];
+        const escuro=tipo==='urano'?[142,206,214]:[38,72,166];
+        const faixa=0.5+0.5*Math.sin((lat+fbmO(N,un,vn,1,3)*0.1)*(tipo==='urano'?4:6)*Math.PI);
+        [r,gr,b]=lerpCor(escuro,claro,faixa*0.55+n*0.45);
+        if(tipo==='netuno'){                             // Grande Mancha Escura
+          const dx=(un-0.62)*2.6, dy=(lat-0.22)*4.2, d=dx*dx+dy*dy;
+          if(d<1) [r,gr,b]=lerpCor([r,gr,b],[18,38,110],Math.pow(1-d,0.8)*0.75);
+        }
+      }
+      else if(tipo==='venus'){
+        const nuv=fbmO(N,un,vn,1,4);                 // véu de ácido, redemoinhos
+        [r,gr,b]=lerpCor([214,170,104],[248,232,190],nuv);
+        const faixa=0.5+0.5*Math.sin((lat*3+nuv*2.2)*Math.PI);
+        [r,gr,b]=lerpCor([r,gr,b],[236,206,148],faixa*0.35);
+      }
+      else {  // mercurio · lua · plutao — regolito e crateras
+        const cinza= tipo==='lua'?[188,186,182]:(tipo==='plutao'?[196,172,146]:[152,146,140]);
+        const mar=   tipo==='lua'?[104,104,110]:(tipo==='plutao'?[128,102,84]:[96,92,90]);
+        const m=fbmO(N,un,vn,1,3);
+        [r,gr,b]=m>0.58? lerpCor(cinza,mar,Math.min(1,(m-0.58)*2.6)) : cinza;
+        const cr=fbmO(N,un+0.09,vn+0.03,3,4);               // campo de crateras
+        const k=(cr-0.5)*0.55; r=Math.max(0,Math.min(255,r+k*90)); gr=Math.max(0,Math.min(255,gr+k*90)); b=Math.max(0,Math.min(255,b+k*90));
+      }
+      // granulação fina: tira o aspecto de degradê liso
+      const gran=(n2-0.5)*(tipo==='terra'?10:16);
+      r=Math.max(0,Math.min(255,r+gran)); gr=Math.max(0,Math.min(255,gr+gran)); b=Math.max(0,Math.min(255,b+gran));
+      const i=(y*TW+x)*4; D[i]=r; D[i+1]=gr; D[i+2]=b; D[i+3]=al;
+    }
+  }
+  g.putImageData(img,0,0); g.putImageData(img,TW,0);      // cópia lado a lado
+  return { c, TW, TH };
+}
+
+/* ── reprojeta a textura na esfera, girada e iluminada ── */
+function esfera(tex, cx, cy, R, rot, luzX, luzY){
+  const N=Math.max(28, Math.min(150, Math.round(R*1.5)));
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx,cy,R,0,7); ctx.clip();
+  const passo=tex.TW/ (2*Math.PI);                        // px de textura por radiano
+  for(let i=0;i<N;i++){
+    // fatias iguais na TELA → arcos desiguais de longitude: é daí que vem o volume
+    const s0=-1+2*i/N, s1=-1+2*(i+1)/N;
+    const l0=Math.asin(Math.max(-1,Math.min(1,s0))), l1=Math.asin(Math.max(-1,Math.min(1,s1)));
+    const u0=(rot+ (l0+Math.PI/2)/(2*Math.PI))*tex.TW, larg=Math.max(0.6,(l1-l0)*passo);
+    const sx=((u0%tex.TW)+tex.TW)%tex.TW;
+    ctx.drawImage(tex.c, sx,0, larg,tex.TH, cx+s0*R, cy-R, (s1-s0)*R+0.6, 2*R);
+  }
+  // ILUMINAÇÃO: terminador orientado ao Sol + escurecimento de limbo
+  const d=Math.hypot(luzX,luzY)||1, ux=luzX/d, uy=luzY/d;
+  const sg=ctx.createRadialGradient(cx+ux*R*0.42, cy+uy*R*0.42, R*0.10, cx-ux*R*0.30, cy-uy*R*0.30, R*1.42);
+  sg.addColorStop(0,'rgba(255,250,235,0.20)'); sg.addColorStop(0.30,'rgba(0,0,0,0)');
+  sg.addColorStop(0.52,'rgba(0,0,0,0.52)'); sg.addColorStop(0.74,'rgba(0,0,0,0.86)'); sg.addColorStop(1,'rgba(0,0,0,0.97)');
+  ctx.fillStyle=sg; ctx.fillRect(cx-R,cy-R,R*2,R*2);
+  // limbo: fina perda de luz na borda inteira, dá a curvatura
+  const lb=ctx.createRadialGradient(cx,cy,R*0.80, cx,cy,R);
+  lb.addColorStop(0,'rgba(0,0,0,0)'); lb.addColorStop(1,'rgba(0,0,0,0.30)');
+  ctx.fillStyle=lb; ctx.fillRect(cx-R,cy-R,R*2,R*2);
+  ctx.restore();
+}
+
+/* ── Sol: granulação viva, manchas e proeminências ── */
+function texturaSol(TW){
+  const TH=TW>>1, c=document.createElement('canvas'); c.width=TW*2; c.height=TH;
+  const g=c.getContext('2d'), img=g.createImageData(TW,TH), D=img.data;
+  const N=ruidoOitavas(167);
+  for(let y=0;y<TH;y++) for(let x=0;x<TW;x++){
+    const un=x/TW, vn=y/TH;
+    const gr=fbmO(N,un,vn,2,4);                        // grânulos de convecção
+    const ma=fbmO(N,un+0.13,vn+0.07,1,2);                   // manchas
+    let c1=lerpCor([255,206,92],[255,246,214],Math.pow(gr,1.5));
+    c1=lerpCor(c1,[255,138,32],(1-gr)*0.55);
+    if(ma>0.70) c1=lerpCor(c1,[126,44,10],Math.min(1,(ma-0.70)*3.2));
+    const i=(y*TW+x)*4; D[i]=c1[0]; D[i+1]=c1[1]; D[i+2]=c1[2]; D[i+3]=255;
+  }
+  g.putImageData(img,0,0); g.putImageData(img,TW,0);
+  return { c, TW, TH };
+}
+
+function makeSistemaSolar(){
+  const base=Math.min(W,H);
+  const defs=[
+    ['mercurio',0.030,0.00,0.0,  0.30], ['venus',  0.046,0.055,0.8, -0.12],
+    ['terra',   0.052,0.115,1.6,  0.42], ['marte',  0.038,0.170,2.5,  0.36],
+    ['jupiter', 0.086,0.230,3.3,  0.85], ['saturno',0.076,0.295,4.1,  0.72],
+    ['urano',   0.056,0.355,4.9, -0.30], ['netuno', 0.054,0.410,5.6,  0.26],
+    ['plutao',  0.026,0.462,6.1,  0.16],
+  ];
+  PLANETAS=defs.map(([tipo,rr,orb,fase,giro])=>{
+    const R=Math.max(18, base*rr);
+    return { tipo, R, orb: base*(0.40+orb*0.42), fase,
+             vel: 0.0125-orb*0.017, giro,
+             tex: texturaEquir(tipo, tipo==='terra'?512:384),
+             incl: 0.34, rot: Math.random() };
+  });
+  SOL={ R: Math.max(150, base*0.30), tex: texturaSol(512), rot: 0 };
+  LUA={ R: Math.max(26, base*0.040), tex: texturaEquir('lua',256), rot: 0.5 };
+}
+
+function drawSistemaSolar(t){
+  if(!PLANETAS.length) return;
+  const cx=W*0.5, cy=H*0.52;
+
+  /* ── ÓRBITAS: elipses finas, o traço que dá leitura de sistema ── */
+  ctx.save(); ctx.strokeStyle='rgba(214,232,255,0.20)'; ctx.lineWidth=1;
+  for(const p of PLANETAS){
+    ctx.beginPath(); ctx.ellipse(cx,cy,p.orb,p.orb*p.incl,0,0,7); ctx.stroke();
+  }
+  ctx.restore();
+
+  /* ── SOL enorme na borda esquerda, como na referência ── */
+  const sx=-SOL.R*0.42, sy=H*0.30, SR=SOL.R;
+  solPos={x:sx,y:sy,r:SR};
+  SOL.rot=(SOL.rot+0.00012)%1;
+  ctx.globalCompositeOperation='lighter';
+  for(const [f,a] of [[2.6,0.13],[1.7,0.22],[1.22,0.40]]){       // coroa
+    const rg=ctx.createRadialGradient(sx,sy,SR*0.9,sx,sy,SR*f);
+    rg.addColorStop(0,`rgba(255,150,40,${a})`); rg.addColorStop(0.5,`rgba(255,92,20,${a*0.5})`);
+    rg.addColorStop(1,'rgba(180,30,0,0)');
+    ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(sx,sy,SR*f,0,7); ctx.fill();
+  }
+  ctx.globalCompositeOperation='source-over';
+  esfera(SOL.tex, sx, sy, SR, SOL.rot, 1, 0);
+  ctx.globalCompositeOperation='lighter';                        // devolve o fogo
+  const fg=ctx.createRadialGradient(sx,sy,SR*0.2,sx,sy,SR);
+  fg.addColorStop(0,'rgba(255,220,120,0.55)'); fg.addColorStop(0.7,'rgba(255,120,30,0.30)');
+  fg.addColorStop(1,'rgba(255,70,10,0.10)');
+  ctx.fillStyle=fg; ctx.beginPath(); ctx.arc(sx,sy,SR,0,7); ctx.fill();
+  const bd=ctx.createRadialGradient(sx,sy,SR*0.92,sx,sy,SR*1.10);  // borda incandescente
+  bd.addColorStop(0,'rgba(255,180,60,0)'); bd.addColorStop(0.45,'rgba(255,150,45,0.55)');
+  bd.addColorStop(1,'rgba(255,90,20,0)');
+  ctx.fillStyle=bd; ctx.beginPath(); ctx.arc(sx,sy,SR*1.10,0,7); ctx.fill();
+  ctx.globalCompositeOperation='source-over';
+
+  /* ── planetas ── */
+  const corpos=PLANETAS.map(p=>{
+    const a=t*p.vel+p.fase;
+    p.rot=(p.rot+p.giro*0.0009)%1; if(p.rot<0)p.rot+=1;
+    return { p, x:cx+Math.cos(a)*p.orb, y:cy+Math.sin(a)*p.orb*p.incl, z:Math.sin(a) };
+  }).sort((A,B)=>A.z-B.z);
+
+  for(const c of corpos){
+    const { p }=c, R=p.R;
+    const lx=sx-c.x, ly=sy-c.y;                                   // direção do Sol
+
+    if(p.tipo==='saturno'){                                       // anéis atrás
+      ctx.save(); ctx.translate(c.x,c.y); ctx.rotate(-0.38); ctx.scale(1,0.26);
+      for(const [r0,r1,cor,al] of [[1.28,1.46,'#cbb894',0.5],[1.50,1.68,'#e6d8b4',0.42],[1.72,1.92,'#b9a684',0.30]]){
+        ctx.globalAlpha=al; ctx.strokeStyle=cor; ctx.lineWidth=R*(r1-r0);
+        ctx.beginPath(); ctx.arc(0,0,R*(r0+r1)/2,Math.PI,Math.PI*2); ctx.stroke(); }
+      ctx.restore(); ctx.globalAlpha=1;
+    }
+
+    esfera(p.tex, c.x, c.y, R, p.rot, lx, ly);
+
+    // atmosfera: halo do lado iluminado, mais fino no escuro
+    const atm={terra:'128,196,255',venus:'255,226,164',urano:'168,244,248',
+               netuno:'96,146,255',marte:'226,148,108'}[p.tipo];
+    if(atm){
+      ctx.globalCompositeOperation='lighter';
+      const ag=ctx.createRadialGradient(c.x,c.y,R*0.95,c.x,c.y,R*1.16);
+      ag.addColorStop(0,`rgba(${atm},0.42)`); ag.addColorStop(1,`rgba(${atm},0)`);
+      ctx.fillStyle=ag; ctx.beginPath(); ctx.arc(c.x,c.y,R*1.16,0,7); ctx.fill();
+      ctx.globalCompositeOperation='source-over';
+    }
+
+    if(p.tipo==='saturno'){                                       // anéis à frente + sombra
+      ctx.save(); ctx.translate(c.x,c.y); ctx.rotate(-0.38); ctx.scale(1,0.26);
+      for(const [r0,r1,cor,al] of [[1.28,1.46,'#e0cfa8',0.72],[1.50,1.68,'#f2e6c4',0.60],[1.72,1.92,'#c8b590',0.42]]){
+        ctx.globalAlpha=al; ctx.strokeStyle=cor; ctx.lineWidth=R*(r1-r0);
+        ctx.beginPath(); ctx.arc(0,0,R*(r0+r1)/2,0,Math.PI); ctx.stroke(); }
+      ctx.globalAlpha=0.5; ctx.strokeStyle='rgba(0,0,0,0.55)'; ctx.lineWidth=R*0.10;
+      ctx.beginPath(); ctx.arc(0,0,R*1.58,0.35,1.05); ctx.stroke();   // sombra do corpo no anel
+      ctx.restore(); ctx.globalAlpha=1;
+    }
+    if(p.tipo==='urano'){                                         // anel fino e vertical
+      ctx.save(); ctx.translate(c.x,c.y); ctx.rotate(1.32); ctx.scale(1,0.16);
+      ctx.globalAlpha=0.42; ctx.strokeStyle='#cfeef2'; ctx.lineWidth=R*0.06;
+      ctx.beginPath(); ctx.arc(0,0,R*1.42,0,7); ctx.stroke(); ctx.restore(); ctx.globalAlpha=1;
+    }
+  }
+
+  /* ── LUA acompanhando a Terra ── */
+  const terra=corpos.find(c=>c.p.tipo==='terra');
+  if(terra){
+    LUA.rot=(LUA.rot+0.0006)%1;
+    const la=t*0.35, lx2=terra.x+Math.cos(la)*terra.p.R*2.5, ly2=terra.y+Math.sin(la)*terra.p.R*1.0;
+    esfera(LUA.tex, lx2, ly2, LUA.R, LUA.rot, sx-lx2, sy-ly2);
+  }
+}
+
+/* ── FEIXES DE LUZ saindo do núcleo do aglomerado de nós ── */
+function drawFeixesNucleo(t){
+  const core=nodes.find(n=>n.group==='core'); if(!core) return;
+  const [x,y]=w2s(core.x,core.y);
+  const base=Math.min(W,H)*0.55;
+  ctx.globalCompositeOperation='lighter';
+  ctx.save(); ctx.translate(x,y); ctx.rotate(t*0.11);
+  for(let i=0;i<16;i++){
+    const a=i/16*Math.PI*2;
+    const puls=0.35+0.65*Math.max(0,Math.sin(t*1.3+i*1.7));
+    const L=base*(0.42+0.58*puls), lar=(2.2+5.5*puls)*scale;
+    const gr=ctx.createLinearGradient(0,0,Math.cos(a)*L,Math.sin(a)*L);
+    gr.addColorStop(0,`rgba(190,245,255,${0.36*puls})`);
+    gr.addColorStop(0.28,`rgba(90,200,255,${0.20*puls})`);
+    gr.addColorStop(1,'rgba(40,120,255,0)');
+    ctx.strokeStyle=gr; ctx.lineWidth=lar; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(Math.cos(a)*L,Math.sin(a)*L); ctx.stroke();
+    const ft=((t*0.42+i/16)%1), fx=Math.cos(a)*L*ft, fy=Math.sin(a)*L*ft;
+    ctx.globalAlpha=(1-ft)*puls*0.9; ctx.fillStyle='#dff6ff';
+    ctx.beginPath(); ctx.arc(fx,fy,(1.6+2.4*(1-ft))*scale,0,7); ctx.fill(); ctx.globalAlpha=1;
+  }
+  ctx.restore();
+  const cl=0.5+0.5*Math.sin(t*2.1), RR=(38+26*cl)*scale;
+  const cg=ctx.createRadialGradient(x,y,0,x,y,RR);
+  cg.addColorStop(0,`rgba(230,252,255,${0.30+0.22*cl})`);
+  cg.addColorStop(0.4,`rgba(90,200,255,${0.16*cl})`); cg.addColorStop(1,'rgba(20,90,200,0)');
+  ctx.fillStyle=cg; ctx.beginPath(); ctx.arc(x,y,RR,0,7); ctx.fill();
+  ctx.globalCompositeOperation='source-over';
+}
+
+/* ── vasos: correntes elétricas / "corrente sanguínea" do cérebro (fundo animado) ── */
+function makeVessels(){
+  vessels=[];
+  const N = Math.round(6 + (W*H)/130000);
+  for(let v=0; v<N; v++){
+    const cps=[]; let x=Math.random()*W, y=Math.random()*H, ang=Math.random()*Math.PI*2;
+    cps.push({x,y}); const steps=4+((Math.random()*3)|0);
+    for(let s=0;s<steps;s++){ ang+=(Math.random()-0.5)*1.5; const d=120+Math.random()*240; x+=Math.cos(ang)*d; y+=Math.sin(ang)*d; cps.push({x,y}); }
+    const pts=[];
+    for(let i=0;i<cps.length-1;i++){
+      const p0=cps[i],p1=cps[i+1];
+      const m0=i>0?{x:(cps[i-1].x+p0.x)/2,y:(cps[i-1].y+p0.y)/2}:p0, m1={x:(p0.x+p1.x)/2,y:(p0.y+p1.y)/2};
+      for(let tt=0;tt<=1.0001;tt+=0.1){ const u=1-tt; pts.push({x:u*u*m0.x+2*u*tt*p0.x+tt*tt*m1.x, y:u*u*m0.y+2*u*tt*p0.y+tt*tt*m1.y}); }
+    }
+    vessels.push({ pts, blood: Math.random()<0.5, ph:Math.random()*10, w:0.6+Math.random()*1.3, n:2+((Math.random()*3)|0), sp:0.04+Math.random()*0.05 });
+  }
+}
+function drawVessels(t){
+  for(const ve of vessels){
+    const P=ve.pts; if(P.length<2) continue;
+    ctx.lineCap='round'; ctx.lineWidth=ve.w;
+    ctx.strokeStyle = ve.blood?'rgba(150,26,48,0.13)':'rgba(0,150,190,0.09)';
+    ctx.beginPath(); ctx.moveTo(P[0].x,P[0].y); for(let i=1;i<P.length;i++) ctx.lineTo(P[i].x,P[i].y); ctx.stroke();
+    for(let k=0;k<ve.n;k++){
+      const tt=((t*ve.sp+ve.ph+k/ve.n)%1), idx=Math.min(P.length-1,(tt*(P.length-1))|0), p=P[idx], a=Math.sin(Math.PI*tt);
+      ctx.shadowColor=ve.blood?'#ff3a5a':'#5cf2ff'; ctx.shadowBlur=8;
+      ctx.fillStyle=(ve.blood?'rgba(255,70,100,':'rgba(120,225,255,')+(a*0.55).toFixed(2)+')';
+      ctx.beginPath(); ctx.arc(p.x,p.y,1.5+a*1.5,0,7); ctx.fill();
+    }
+  }
+  ctx.shadowBlur=0;
+}
+resize();
+
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('on'),2600); }
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+/* ════════════════ carga do grafo ════════════════ */
+async function load(){
+  let d; try{ d = await fetch('/api/brain').then(r=>r.json()); }catch(e){ toast('Falha ao carregar o cérebro'); return; }
+  const prev = new Map(nodes.map(n=>[n.id,n]));
+  byId = new Map();
+  const cx=W/2, cy=H/2;
+  nodes = d.nodes.map((n,i)=>{
+    const p = prev.get(n.id);
+    let x,y;
+    if(p){ x=p.x; y=p.y; }
+    else if(firstLoad){ // nascimento: tudo brota do núcleo (bloom)
+      const ring = n.group==='capability'?70 : n.group==='obsidian-hub'?120 : n.group==='obsidian'?170 : 120;
+      const a=Math.random()*Math.PI*2; x=cx+Math.cos(a)*ring*Math.random(); y=cy+Math.sin(a)*ring*Math.random();
+    } else { x=cx+(Math.random()-.5)*300; y=cy+(Math.random()-.5)*300; }
+    return Object.assign({}, n, { x, y, vx:0, vy:0, i, pinned: p?p.pinned:(n.group==='core'), r: 4+Math.sqrt(n.size)*2.2 });
+  });
+  nodes.forEach(n=>byId.set(n.id,n));
+  const core = byId.get('elion'); if(core && firstLoad){ core.x=cx; core.y=cy; core.pinned=true; }
+  const hub = byId.get('obsidian'); if(hub && !prev.has('obsidian')){ hub.x=cx+W*0.22; hub.y=cy-H*0.06; }
+  links = d.links.map(l=>({ s:byId.get(l.source), t:byId.get(l.target), kind:l.kind||'sys' })).filter(l=>l.s&&l.t);
+  OBS.vaultName = (d.obsidian&&d.obsidian.vaultName)||'';
+  if(d.stats) document.getElementById('stats').innerHTML =
+    `<b>${d.stats.capabilities}</b> funções · <b>${d.stats.records}</b> registros<br>`+
+    `<b>${d.stats.obsidian}</b> notas · <i>${d.stats.fusion||0} fusões</i>`+
+    (d.stats.acoes ? ` · <b style="color:#ffb020">${d.stats.acoes}</b> ações` : '');
+  renderLegend();
+  const o=d.obsidian||{}, st=document.getElementById('obsStatus');
+  if(o.ok){ st.innerHTML=`<span style="color:var(--green)">✓ conectado</span> — ${o.count} notas${o.truncated?' (limite 700)':''} · <span style="color:var(--gold)">${d.stats.fusion||0} fusões</span>`; document.getElementById('obsPath').value=o.vault||''; }
+  else if(o.vault){ st.innerHTML=`<span style="color:var(--red)">✗ ${esc(o.error||'sem notas')}</span>`; document.getElementById('obsPath').value=o.vault; }
+  else st.innerHTML='<span style="color:var(--muted)">não conectado</span>';
+  // reaquecimento inteligente: total no 1º load / mudanças; suave no auto-refresh
+  const changed = prev.size !== nodes.length || nodes.some(n=>!prev.has(n.id));
+  alpha = firstLoad ? 1 : (changed ? 0.6 : Math.max(alpha, 0.06));
+  if(firstLoad){ cv.classList.add('on'); setTimeout(fit, 1400); }
+  firstLoad=false;
+}
+function renderLegend(){
+  document.getElementById('legend').innerHTML =
+    Object.values(GROUPS).map(g=>`<div class="lrow"><span class="dot" style="background:${g.c};box-shadow:0 0 8px ${g.c}"></span>${g.label}</div>`).join('')+
+    `<div class="lrow"><span class="dash"></span>Fusão ELION ↔ Obsidian</div>`;
+}
+
+/* ════════════════ física — grade espacial (aguenta centenas de nós) ════════════════ */
+function sim(){
+  if(alpha<=0.022 && !drag) return;
+  const cell=100, REP=1600, K=0.018, cut2=cell*cell*2.25;
+  const map=new Map();
+  for(const n of nodes){ n.fx=0; n.fy=0; const k=((n.x/cell)|0)+':'+((n.y/cell)|0); const a=map.get(k); a?a.push(n):map.set(k,[n]); }
+  for(const n of nodes){
+    const gx0=(n.x/cell)|0, gy0=(n.y/cell)|0;
+    for(let gx=gx0-1;gx<=gx0+1;gx++) for(let gy=gy0-1;gy<=gy0+1;gy++){
+      const arr=map.get(gx+':'+gy); if(!arr) continue;
+      for(const b of arr){
+        if(b.i<=n.i) continue;
+        let dx=n.x-b.x, dy=n.y-b.y, d2=dx*dx+dy*dy+0.01;
+        if(d2>cut2) continue;
+        const f=REP/d2, d=Math.sqrt(d2), fx=dx/d*f, fy=dy/d*f;
+        n.fx+=fx; n.fy+=fy; b.fx-=fx; b.fy-=fy;
+      }
+    }
+  }
+  for(const l of links){ const a=l.s,b=l.t; let dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1;
+    const f=(d-(DIST[l.kind]||110))*K, fx=dx/d*f, fy=dy/d*f;
+    a.fx+=fx;a.fy+=fy;b.fx-=fx;b.fy-=fy; }
+  const cx=W/2,cy=H/2;
+  for(const n of nodes){ const g=n.group==='core'?0:0.0016; n.fx+=(cx-n.x)*g; n.fy+=(cy-n.y)*g; }
+  for(const n of nodes){ if(n.pinned||n===drag){ n.vx=n.vy=0; continue; }
+    n.vx=(n.vx+n.fx)*0.86; n.vy=(n.vy+n.fy)*0.86;
+    const s=Math.hypot(n.vx,n.vy); if(s>30){ n.vx=n.vx/s*30; n.vy=n.vy/s*30; }
+    n.x+=n.vx*0.5*alpha; n.y+=n.vy*0.5*alpha; }
+}
+function reheat(a){ alpha=Math.max(alpha, a==null?0.7:a); }
+
+/* ════════════════ câmera ════════════════ */
+const w2s=(x,y)=>[x*scale+panX, y*scale+panY];
+const s2w=(x,y)=>[(x-panX)/scale,(y-panY)/scale];
+function flyTo(n, s){
+  s = s || Math.max(scale, 1.55);
+  const detailOpen = document.getElementById('detail').classList.contains('on') || true;
+  const tx = detailOpen && W>760 ? W*0.42 : W*0.5, ty=H*0.52;
+  cam = { t0:performance.now(), dur:750, f:{s:scale,x:panX,y:panY}, to:{s, x:tx-n.x*s, y:ty-n.y*s} };
+}
+function camStep(){ if(!cam) return;
+  const p=Math.min(1,(performance.now()-cam.t0)/cam.dur);
+  const e=p<0.5 ? 4*p*p*p : 1-Math.pow(-2*p+2,3)/2;
+  scale=cam.f.s+(cam.to.s-cam.f.s)*e; panX=cam.f.x+(cam.to.x-cam.f.x)*e; panY=cam.f.y+(cam.to.y-cam.f.y)*e;
+  if(p>=1) cam=null;
+}
+function fit(){
+  if(!nodes.length) return;
+  let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
+  for(const n of nodes){ minx=Math.min(minx,n.x);miny=Math.min(miny,n.y);maxx=Math.max(maxx,n.x);maxy=Math.max(maxy,n.y); }
+  const gw=maxx-minx||1, gh=maxy-miny||1;
+  const s=Math.min(3, Math.max(.3, Math.min((W-140)/gw,(H-200)/gh)));
+  cam={ t0:performance.now(), dur:800, f:{s:scale,x:panX,y:panY},
+        to:{s, x:W/2-(minx+gw/2)*s, y:(H+40)/2-(miny+gh/2)*s} };
+}
+
+/* ════════════════ links curvos + pulsos de energia ════════════════ */
+function ctrlPt(l){ const ax=l.s.x,ay=l.s.y,bx=l.t.x,by=l.t.y, mx=(ax+bx)/2,my=(ay+by)/2;
+  const k=CURV[l.kind]||0.08; return [mx-(by-ay)*k, my+(bx-ax)*k]; }
+function bez(l,t){ const [cx,cy]=ctrlPt(l); const u=1-t;
+  return [u*u*l.s.x+2*u*t*cx+t*t*l.t.x, u*u*l.s.y+2*u*t*cy+t*t*l.t.y]; }
+function spawnPulses(dt){
+  if(!links.length) return;
+  pulseT+=dt;
+  const maxP = nodes.length>400 ? 55 : 90;
+  const rate = Math.min(22, 4+links.length*0.08);
+  while(pulseT>1/rate){
+    pulseT-=1/rate;
+    const l = links[(Math.random()*links.length)|0];
+    pulses.push({ l, t:0, sp:0.3+Math.random()*0.5, pc:Math.random() });
+    if(pulses.length>maxP) pulses.shift();
+  }
+}
+function neighbors(n){ const s=new Set(); for(const l of links){ if(l.s===n)s.add(l.t); if(l.t===n)s.add(l.s); } return s; }
+
+/* ════════════════ desenho ════════════════ */
+function draw(){
+  const t=(performance.now()-t0)/1000;
+  ctx.clearRect(0,0,W,H);
+  // fundo vem do WebGL (cosmos.js) — o 2D fica transparente
+  drawVessels(t);          // correntes elétricas / "corrente sanguínea" do cérebro
+  drawFeixesNucleo(t);     // feixes de luz irradiando do núcleo do aglomerado
+
+  const focus = selected||hover;
+  const nb = focus? neighbors(focus): null;
+  const q = query.trim().toLowerCase();
+
+  // ── VEIAS NEON: corrente sanguínea correndo (vermelho→amarelo→azul), aditivo ──
+  ctx.globalCompositeOperation='lighter'; ctx.lineCap='round';
+  for(let li=0; li<links.length; li++){
+    const l=links[li];
+    const [x1,y1]=w2s(l.s.x,l.s.y),[x2,y2]=w2s(l.t.x,l.t.y);
+    const [cxp,cyp]=ctrlPt(l); const [cx,cy]=w2s(cxp,cyp);
+    let dim=1; if(focus) dim = (l.s===focus||l.t===focus)?1:0.16;
+    if(q) dim*=0.5;
+    // fase da corrente: caminha ao longo da veia com o tempo (gradiente vermelho→amarelo→azul)
+    const ph=(t*0.28 + li*0.13), grad=ctx.createLinearGradient(x1,y1,x2,y2);
+    grad.addColorStop(0, flowCol(ph, 0.10*dim));
+    grad.addColorStop(0.5, flowCol(ph+0.5, 0.5*dim));
+    grad.addColorStop(1, flowCol(ph+1, 0.10*dim));
+    // halo largo (brilho da veia)
+    ctx.strokeStyle=grad; ctx.lineWidth=(l.kind==='bridge'||l.kind==='fusion'?5:3.4)*dim;
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.quadraticCurveTo(cx,cy,x2,y2); ctx.stroke();
+    // núcleo fino claro
+    ctx.strokeStyle=flowCol(ph+0.5, 0.85*dim); ctx.lineWidth=1.1*dim;
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.quadraticCurveTo(cx,cy,x2,y2); ctx.stroke();
+  }
+  // ── glóbulos correndo na corrente (incandescentes) ──
+  for(let i=pulses.length-1;i>=0;i--){
+    const p=pulses[i]; p.t += p.sp*gdt;
+    if(p.t>=1){ pulses.splice(i,1); continue; }
+    let dim=1; if(focus) dim=(p.l.s===focus||p.l.t===focus)?1:0.2;
+    const [wx,wy]=bez(p.l,p.t); const [x,y]=w2s(wx,wy);
+    const col=flowCol(p.pc + p.t*0.3, 1), a=Math.sin(Math.PI*p.t)*dim;
+    const big=(p.l.kind==='bridge'||p.l.kind==='fusion'), R=big?4:2.8;
+    const rg=ctx.createRadialGradient(x,y,0,x,y,R*6.5);
+    rg.addColorStop(0,`rgba(255,255,255,${(a*0.95).toFixed(3)})`);
+    rg.addColorStop(0.26, flowCol(p.pc+p.t*0.3, a*0.9)); rg.addColorStop(1, flowCol(p.pc, 0));
+    ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(x,y,R*6.5,0,7); ctx.fill();
+    ctx.fillStyle=`rgba(255,255,255,${a.toFixed(3)})`; ctx.beginPath(); ctx.arc(x,y,R*0.9,0,7); ctx.fill();
+  }
+  ctx.globalCompositeOperation='source-over'; ctx.globalAlpha=1; ctx.shadowBlur=0;
+
+  // ── NÓS = bolhas de ÁGUA AZUL reluzentes, volume 3D (destaque + reflexos) ──
+  for(const n of nodes){
+    const [x,y]=w2s(n.x,n.y); const g=GROUPS[n.group]||GROUPS.record; const R=n.r*scale;
+    let a=1;
+    if(q) a = n.label.toLowerCase().includes(q)?1:0.1;
+    else if(focus) a = (n===focus||(nb&&nb.has(n)))?1:0.15;
+    ctx.globalAlpha=a;
+    const isHub = n.group==='core'||n.group==='obsidian-hub';
+    const pulse = isHub? 0.5+0.5*Math.sin(t*(n.group==='core'?2:1.6)) : 0;
+    const bob = 1 + 0.04*Math.sin(t*1.6 + n.i*0.7);   // respiração 3D sutil
+    const RR = R*bob;
+    // halo neon da categoria
+    ctx.shadowColor=g.c; ctx.shadowBlur=(n===focus?28:12)+pulse*16;
+    // corpo: esfera de água azul (luz vindo do topo-esquerda)
+    const gx=x-RR*0.34, gy=y-RR*0.36;
+    const body=ctx.createRadialGradient(gx,gy,RR*0.05, x,y,RR*1.03);
+    body.addColorStop(0,'rgba(255,255,255,0.97)');
+    body.addColorStop(0.20,'#a9e8ff');
+    body.addColorStop(0.55,'#2a97e6');
+    body.addColorStop(0.85,'#0c4f8f');
+    body.addColorStop(1,'#052a52');
+    ctx.fillStyle=body; ctx.beginPath(); ctx.arc(x,y,RR,0,7); ctx.fill();
+    ctx.shadowBlur=0;
+    // anel NEON da categoria (identidade do nó)
+    ctx.globalAlpha=a*0.95; ctx.strokeStyle=g.c; ctx.lineWidth=Math.max(1,RR*0.14);
+    ctx.beginPath(); ctx.arc(x,y,RR*0.92,0,7); ctx.stroke();
+    // arco de refração escuro embaixo (volume)
+    ctx.globalAlpha=a*0.5; ctx.strokeStyle='rgba(3,20,44,0.9)'; ctx.lineWidth=Math.max(0.8,RR*0.1);
+    ctx.beginPath(); ctx.arc(x,y,RR*0.9,0.5,2.5); ctx.stroke();
+    // rim de luz molhada no topo
+    ctx.globalAlpha=a*0.9; ctx.strokeStyle='rgba(255,255,255,0.65)'; ctx.lineWidth=Math.max(0.8,RR*0.09);
+    ctx.beginPath(); ctx.arc(x,y,RR*0.8,-2.5,-0.7); ctx.stroke();
+    // reflexos especulares (gota d'água)
+    ctx.globalAlpha=a; ctx.fillStyle='rgba(255,255,255,0.95)';
+    ctx.beginPath(); ctx.ellipse(x-RR*0.3,y-RR*0.38,RR*0.24,RR*0.15,-0.5,0,7); ctx.fill();
+    ctx.fillStyle='rgba(190,238,255,0.5)';
+    ctx.beginPath(); ctx.arc(x+RR*0.3,y+RR*0.34,RR*0.12,0,7); ctx.fill();
+    ctx.globalAlpha=a;
+    if(isHub){ // anéis orbitais
+      ctx.strokeStyle=g.c+'99'; ctx.lineWidth=1;
+      ctx.setLineDash([6,10]); ctx.lineDashOffset=-t*26;
+      ctx.beginPath(); ctx.arc(x,y,RR+10*scale,0,7); ctx.stroke();
+      if(n.group==='core'){ ctx.lineDashOffset=t*20; ctx.beginPath(); ctx.arc(x,y,RR+20*scale,0,7); ctx.stroke(); }
+      ctx.setLineDash([]);
+    }
+    if(n===focus){ ctx.strokeStyle='#eafcff'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(x,y,RR+4,0,7); ctx.stroke(); }
+    // rótulo
+    ctx.shadowBlur=0;
+    // NOME de CADA nó sempre visível (com contorno p/ legibilidade sobre a malha)
+    if(a>0.25){
+      ctx.globalAlpha=Math.min(1,a);
+      const fs=n.group==='core'?15:(n.group==='capability'||n.group==='obsidian-hub'?12.5:10.5);
+      ctx.font=`${isHub||n.group==='capability'?600:500} ${fs}px Rajdhani, sans-serif`;
+      ctx.textAlign='center'; ctx.textBaseline='top'; ctx.lineJoin='round';
+      let lbl=n.label; if(lbl.length>28)lbl=lbl.slice(0,27)+'…';
+      const ly=y+R+3;
+      ctx.lineWidth=3.2; ctx.strokeStyle='rgba(1,6,14,0.9)'; ctx.strokeText(lbl, x, ly);
+      ctx.fillStyle = n.group==='core'?'#eafcff':(n.group.startsWith('obsidian')?'#f0e0ff':(n.group==='record'?'#d6ffe9':'#dff4ff'));
+      ctx.fillText(lbl, x, ly);
+    }
+  }
+  ctx.globalAlpha=1;
+}
+let lastF=performance.now(), gdt=0.016;
+function loop(){
+  const now=performance.now(), dt=Math.min((now-lastF)/1000,0.05); lastF=now; gdt=dt;
+  camStep(); sim(); alpha=Math.max(0.02, alpha*0.992);
+  spawnPulses(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+/* ════════════════ interação (mouse + toque) ════════════════ */
+function nodeAt(sx,sy){
+  for(let i=nodes.length-1;i>=0;i--){ const n=nodes[i]; const [x,y]=w2s(n.x,n.y); const R=n.r*scale+5;
+    if((sx-x)**2+(sy-y)**2 <= R*R) return n; }
+  return null;
+}
+const tip=document.getElementById('tip');
+cv.addEventListener('mousemove', e=>{
+  if(drag){ const [wx,wy]=s2w(e.clientX,e.clientY); drag.x=wx; drag.y=wy; drag.pinned=true; dragMoved=true; reheat(0.4); return; }
+  if(panning){ panX+=e.clientX-panning.x; panY+=e.clientY-panning.y; panning={x:e.clientX,y:e.clientY}; return; }
+  const n=nodeAt(e.clientX,e.clientY); hover=n; cv.style.cursor=n?'pointer':'grab';
+  if(n){ tip.innerHTML=`${esc(n.label)}<small>${esc((n.meta&&n.meta.sub)||GROUPS[n.group].label)}</small>`;
+    tip.style.left=(e.clientX+14)+'px'; tip.style.top=(e.clientY+10)+'px'; tip.style.opacity=1; }
+  else tip.style.opacity=0;
+});
+cv.addEventListener('mousedown', e=>{ cam=null;
+  const n=nodeAt(e.clientX,e.clientY);
+  if(n){ drag=n; dragMoved=false; reheat(0.4); } else { panning={x:e.clientX,y:e.clientY}; cv.style.cursor='grabbing'; }
+});
+addEventListener('mouseup', ()=>{
+  if(drag && !dragMoved){ select(drag); flyTo(drag); }
+  if(panning) cv.style.cursor='grab';
+  drag=null; panning=null;
+});
+cv.addEventListener('wheel', e=>{ e.preventDefault(); cam=null;
+  const f=e.deltaY<0?1.12:0.89, ns=Math.max(0.3,Math.min(4,scale*f));
+  const [wx,wy]=s2w(e.clientX,e.clientY);
+  scale=ns; panX=e.clientX-wx*scale; panY=e.clientY-wy*scale;
+},{passive:false});
+cv.addEventListener('dblclick', e=>{ const n=nodeAt(e.clientX,e.clientY);
+  if(n&&n.group!=='core'){ n.pinned=false; reheat(0.3); toast('Nó solto'); } else if(!n) fit(); });
+
+/* toque: 1 dedo arrasta/pan · 2 dedos pinça · toque curto seleciona */
+let tState=null;
+cv.addEventListener('touchstart', e=>{ e.preventDefault(); cam=null;
+  if(e.touches.length===1){ const T=e.touches[0]; const n=nodeAt(T.clientX,T.clientY);
+    tState={mode:n?'drag':'pan', x:T.clientX, y:T.clientY, n, moved:false, at:Date.now()};
+    if(n){ drag=n; reheat(0.4); } }
+  else if(e.touches.length===2){ const [a,b]=e.touches;
+    tState={mode:'pinch', d:Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY), s:scale,
+      mx:(a.clientX+b.clientX)/2, my:(a.clientY+b.clientY)/2}; drag=null; }
+},{passive:false});
+cv.addEventListener('touchmove', e=>{ e.preventDefault(); if(!tState) return;
+  if(tState.mode==='pinch' && e.touches.length===2){ const [a,b]=e.touches;
+    const d=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+    const ns=Math.max(0.3,Math.min(4,tState.s*d/tState.d));
+    const [wx,wy]=s2w(tState.mx,tState.my); scale=ns; panX=tState.mx-wx*scale; panY=tState.my-wy*scale; return; }
+  const T=e.touches[0]; const dx=T.clientX-tState.x, dy=T.clientY-tState.y;
+  if(Math.abs(dx)+Math.abs(dy)>6) tState.moved=true;
+  if(tState.mode==='drag' && drag){ const [wx,wy]=s2w(T.clientX,T.clientY); drag.x=wx; drag.y=wy; drag.pinned=true; }
+  else if(tState.mode==='pan'){ panX+=dx; panY+=dy; }
+  tState.x=T.clientX; tState.y=T.clientY;
+},{passive:false});
+cv.addEventListener('touchend', e=>{ e.preventDefault();
+  if(tState && !tState.moved && tState.n && Date.now()-tState.at<400){ select(tState.n); flyTo(tState.n); }
+  drag=null; tState=null;
+},{passive:false});
+
+/* ════════════════ seleção / detalhe ════════════════ */
+function select(n){
+  selected=n;
+  const g=GROUPS[n.group]||GROUPS.record, m=n.meta||{};
+  let rows='';
+  if(m.sub) rows+=`<div><b>Tipo</b> · ${esc(m.sub)}</div>`;
+  if(m.when) rows+=`<div><b>Quando</b> · ${esc(m.when)}</div>`;
+  if(m.where) rows+=`<div><b>Local</b> · ${esc(m.where)}</div>`;
+  if(m.valor!=null) rows+=`<div><b>Valor</b> · R$ ${Number(m.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`;
+  if(m.count!=null) rows+=`<div><b>Notas</b> · ${m.count}</div>`;
+  const nb=[...neighbors(n)];
+  rows+=`<div><b>Conexões</b> · ${nb.length}</div>`;
+  const ex=m.excerpt||m.full||m.text||m.desc||'';
+  let obtn='';
+  if(n.group==='obsidian' && m.rel && OBS.vaultName){
+    const uri=`obsidian://open?vault=${encodeURIComponent(OBS.vaultName)}&file=${encodeURIComponent(m.rel)}`;
+    obtn=`<a class="obtn" href="${uri}">⧉ ABRIR NO OBSIDIAN</a>`;
+  }
+  document.getElementById('detBody').innerHTML =
+    `<div class="dtag" style="color:${g.c};border:1px solid ${g.c}55;background:${g.c}12">${g.label.toUpperCase()}</div>`+
+    `<h2>${esc(n.label)}</h2>`+
+    `<div class="dmeta">${rows}</div>`+
+    (ex?`<div class="dex">${esc(ex)}</div>`:'')+
+    (m.tags&&m.tags.length?`<div class="dtags">${m.tags.map(x=>`<span>#${esc(x)}</span>`).join('')}</div>`:'')+
+    (nb.length?`<div class="dex"><b style="color:var(--muted);font-family:var(--f-mono);font-size:10px">LIGADO A</b><br>${nb.slice(0,12).map(x=>esc(x.label)).join(' · ')}</div>`:'')+
+    obtn;
+  document.getElementById('detail').classList.add('on');
+}
+function closeDetail(){ selected=null; document.getElementById('detail').classList.remove('on'); }
+document.getElementById('detClose').onclick=closeDetail;
+
+/* ════════════════ controles ════════════════ */
+const searchEl=document.getElementById('search');
+searchEl.addEventListener('input', e=>{ query=e.target.value; });
+searchEl.addEventListener('keydown', e=>{
+  if(e.key!=='Enter') return;
+  const q=query.trim().toLowerCase(); if(!q) return;
+  const m=nodes.find(n=>n.label.toLowerCase().startsWith(q))||nodes.find(n=>n.label.toLowerCase().includes(q));
+  if(m){ select(m); flyTo(m); toast('→ '+m.label); } else toast('Nenhum nó encontrado');
+});
+addEventListener('keydown', e=>{
+  if(e.key==='Escape'){ closeDetail(); query=''; searchEl.value=''; searchEl.blur(); }
+  if(e.key==='/' && document.activeElement!==searchEl){ e.preventDefault(); searchEl.focus(); }
+});
+document.getElementById('refresh').onclick=()=>{ load(); toast('Cérebro sincronizado'); };
+document.getElementById('fitBtn').onclick=fit;
+document.getElementById('obsConnect').onclick=async()=>{
+  const vault=document.getElementById('obsPath').value.trim();
+  const btn=document.getElementById('obsConnect'); btn.textContent='CONECTANDO…'; btn.disabled=true;
+  try{
+    const r=await fetch('/api/obsidian',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vault})}).then(x=>x.json());
+    if(r.error){ document.getElementById('obsStatus').innerHTML=`<span style="color:var(--red)">✗ ${esc(r.error)}</span>`; toast('Vault não encontrado'); }
+    else { toast(vault? `Obsidian conectado — ${r.count} notas`:'Obsidian desconectado'); await load(); reheat(0.9); setTimeout(fit,900); }
+  }catch(e){ toast('Erro ao conectar'); }
+  btn.textContent='CONECTAR VAULT'; btn.disabled=false;
+};
+setInterval(load, 90000);   // sincroniza sozinho (mantém posições; reaquece só se mudou)
+
+load();
+loop();
+</script>
+</body></html>

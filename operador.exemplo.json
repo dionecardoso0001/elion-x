@@ -1,0 +1,41 @@
+{
+  "_leia_me": [
+    "MODELO DO PERFIL DO OPERADOR — copie este arquivo para data/operador.json e preencha.",
+    "",
+    "    cp operador.exemplo.json data/operador.json",
+    "",
+    "O diretório data/ está no .gitignore: o que você escrever ali NUNCA vai para o",
+    "controle de versão, e é por isso que os dados da sua família ficam lá e não no",
+    "código. A plataforma sobe e funciona sem este arquivo — ela apenas trata você de",
+    "forma neutra até que você se apresente.",
+    "",
+    "Pode editar com a plataforma no ar: o perfil é relido a cada 30 segundos."
+  ],
+
+  "nome": "Maria Silva",
+  "comoChamar": "Maria",
+  "tratamentoFormal": "Senhora",
+
+  "_sobre_variantesDeTranscricao": [
+    "Como o reconhecimento de voz do navegador ERRA o seu nome. Nome próprio pouco",
+    "comum sai torto com frequência, e sem esta lista o agente trata cada erro como",
+    "se fosse outra pessoa — ou pergunta quem é você no meio da conversa.",
+    "Descubra os seus falando com a plataforma e olhando a transcrição."
+  ],
+  "variantesDeTranscricao": ["Mariah", "Maia", "Marya"],
+
+  "_sobre_familia": [
+    "Quem o reconhecimento facial e a biometria vocal devem identificar pelo NOME.",
+    "A idade é opcional: quando presente e menor de 18, o agente ajusta o registro",
+    "— frases mais simples, tom mais caloroso, e trata pelo nome em vez do",
+    "tratamento formal. Deixe a lista vazia ([]) se preferir não cadastrar ninguém."
+  ],
+  "familia": [
+    { "nome": "João Silva", "parentesco": "marido" },
+    { "nome": "Ana Silva", "parentesco": "filha", "idade": 12 },
+    { "nome": "Pedro Silva", "parentesco": "filho", "idade": 7 }
+  ],
+
+  "_sobre_observacoes": "Texto livre acrescentado ao final do bloco de identidade no prompt. Use para o que for específico de você: profissão, contexto de trabalho, preferências de tratamento. Deixe vazio se não precisar.",
+  "observacoes": ""
+}

@@ -1,0 +1,22 @@
+{
+  "name": "elion-x-platform",
+  "version": "3.1.0",
+  "description": "ELION-X — central de comando de IA classe JARVIS: voz, visão computacional, WhatsApp, agenda, meteorologia, mercado e segurança defensiva, com loop agêntico e ferramentas",
+  "private": true,
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "pdf-parse": "^1.1.1",
+    "whatsapp-web.js": "^1.34.7"
+  },
+  "license": "MIT",
+  "author": "Dione Cardoso"
+}

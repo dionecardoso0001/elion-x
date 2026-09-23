@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ELION-X · WhatsApp</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root{--cyan:#00e5ff;--green:#00ff9d;--red:#ff2a4a;--muted:#9bd0ee;--border:rgba(0,229,255,.22)}
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(800px 500px at 50% 0%,#04182e,#010810 70%);color:#c9e9f8;
+    font-family:'Segoe UI',sans-serif;padding:18px;min-height:100vh}
+  h2{font-size:16px;letter-spacing:3px;margin:0 0 4px;color:#eafcff}
+  h2 b{color:var(--green)}
+  .sub{font-size:11px;color:var(--muted);margin-bottom:16px;letter-spacing:1px}
+  .card{background:rgba(2,13,26,.7);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px}
+  button{font-family:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--border);
+    background:rgba(0,229,255,.08);color:var(--cyan);padding:9px 16px;font-size:13px;letter-spacing:1px;transition:.2s}
+  button:hover{background:rgba(0,229,255,.2)}
+  button.green{color:var(--green);border-color:rgba(0,255,157,.3);background:rgba(0,255,157,.08)}
+  button.red{color:var(--red);border-color:rgba(255,42,74,.3);background:rgba(255,42,74,.08)}
+  #qrbox{background:#fff;padding:16px;border-radius:12px;display:inline-block;margin:10px 0}
+  .warn{font-size:11px;color:#ffc44d;background:rgba(255,196,77,.08);border:1px solid rgba(255,196,77,.25);
+    border-radius:6px;padding:10px;line-height:1.5;margin-bottom:12px}
+  .toggle{display:flex;align-items:center;gap:12px;justify-content:space-between}
+  .switch{width:52px;height:28px;border-radius:14px;background:#1a2c3a;position:relative;transition:.25s;border:1px solid var(--border)}
+  .switch.on{background:rgba(0,255,157,.3)}
+  .switch i{position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;background:var(--muted);transition:.25s}
+  .switch.on i{left:26px;background:var(--green)}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid rgba(0,229,255,.08);font-size:13px}
+  .row:last-child{border:0}
+  .tag{font-size:10px;color:var(--green);border:1px solid rgba(0,255,157,.3);border-radius:3px;padding:1px 6px}
+  .mut{color:var(--muted);font-size:11px}
+  .badge{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+  input{background:rgba(0,18,34,.7);border:1px solid var(--border);border-radius:5px;color:#c9e9f8;padding:8px;font-size:13px;width:100%}
+</style></head>
+<body>
+  <h2>WHATSAPP <b>· ELION-X</b></h2>
+  <div class="sub" id="meline">verificando conexão…</div>
+  <div id="app"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const api = (p,m='GET',b) => fetch('/api/whatsapp'+p,{method:m,headers:b?{'Content-Type':'application/json'}:undefined,body:b?JSON.stringify(b):undefined}).then(r=>r.json());
+let pollTimer=null, lastStatus='', lastQr='', autoTried=false;
+
+async function tick(){
+  const s = await api('/status').catch(()=>({status:'erro'}));
+  $('#meline').textContent = s.connected ? ('conectado'+(s.me?' · +'+s.me:'')) : ('status: '+s.status);
+
+  if (s.connected){ if(lastStatus!=='ready') renderReady(s); lastStatus='ready'; lastQr=''; return; }
+
+  // liga o motor automaticamente na primeira abertura (se houver sessão salva, conecta SEM QR)
+  if ((s.status === 'off' || s.status === 'disconnected') && !autoTried){
+    autoTried = true;
+    render({ status: 'starting' });   // feedback imediato — nunca tela em branco
+    connect();
+    lastStatus = 'auto';              // se continuar off (falhou), o próximo tique re-renderiza o botão
+    return;
+  }
+
+  // QR DENTRO DA PLATAFORMA — como no portal do WhatsApp Web
+  if (s.status === 'qr'){
+    const d = await api('/qr').catch(()=>({}));
+    if (d.qr && d.qr !== lastQr){ lastQr = d.qr; drawQR(d.qr); }
+    lastStatus = 'qr';
+    return;
+  }
+
+  if (s.status !== lastStatus){ lastQr=''; render(s); }
+  lastStatus = s.status;
+}
+
+async function render(s){
+  const app = $('#app');
+  if (s.connected) return renderReady(s);
+  if (s.status === 'starting'){
+    app.innerHTML = `<div class="card" style="text-align:center"><div style="font-size:40px">⚙️</div>
+      <p class="mut">Ligando o motor do WhatsApp…<br>se você já conectou antes, entro direto <b>sem pedir QR</b>.</p></div>`;
+    return;
+  }
+  if (s.status === 'loading'){
+    app.innerHTML = `<div class="card" style="text-align:center"><div style="font-size:40px">🔄</div>
+      <p class="mut"><b>Autenticado!</b> Sincronizando suas conversas…<br>só mais alguns segundos.</p></div>`;
+    return;
+  }
+  if (s.status === 'error'){
+    app.innerHTML = `
+      <div class="warn">⚠️ ${esc(s.error||'A conexão falhou.')}</div>
+      <div class="card" style="text-align:center">
+        <button class="green" onclick="connect()" id="cbtn">◈ Tentar conectar de novo</button>
+      </div>`;
+    return;
+  }
+  // off / disconnected
+  app.innerHTML = `
+    <div class="warn">⚠️ Automatizar o WhatsApp pessoal viola os Termos do WhatsApp e pode <b>banir seu número</b>. Use de preferência um número secundário. A resposta automática começa <b>desligada</b> e só responde contatos que você liberar.</div>
+    <div class="card" style="text-align:center">
+      <p class="mut">Conecte sua conta para o ELION ler e responder mensagens.<br>O QR Code aparece <b>aqui nesta tela</b> — igual ao WhatsApp Web.</p>
+      <button class="green" onclick="connect()" id="cbtn">◈ Conectar WhatsApp</button>
+    </div>`;
+}
+
+async function connect(){
+  const b = $('#cbtn'); if (b){ b.textContent='iniciando…'; b.disabled=true; }
+  await api('/connect','POST').catch(()=>{});
+  setTimeout(tick,1200);
+}
+
+// QR grande, dentro da plataforma — o mesmo fluxo do portal WhatsApp Web
+function drawQR(qr){
+  $('#app').innerHTML = `
+    <div class="card" style="text-align:center">
+      <p style="margin:0 0 4px;font-size:14px"><b>Escaneie para conectar</b></p>
+      <div id="qrbox"></div>
+      <div style="text-align:left;max-width:340px;margin:10px auto 0;font-size:12.5px;line-height:1.9;color:var(--muted)">
+        <b style="color:#c9e9f8">1.</b> Abra o <b>WhatsApp</b> no celular<br>
+        <b style="color:#c9e9f8">2.</b> Toque em <b>⋮ (Menu) → Aparelhos conectados</b><br>
+        <b style="color:#c9e9f8">3.</b> Toque em <b>Conectar aparelho</b> e aponte a câmera para o QR acima
+      </div>
+      <p class="mut" style="opacity:.6;margin-top:10px">o código renova sozinho · esta tela vira o painel assim que conectar</p>
+    </div>`;
+  new QRCode($('#qrbox'),{text:qr,width:240,height:240,correctLevel:QRCode.CorrectLevel.L});
+}
+
+async function renderReady(s){
+  const allow = (await api('/allow')).allow || [];
+  const chats = (await api('/chats')).chats || [];
+  const log = (await api('/log')).log || [];
+  $('#app').innerHTML = `
+    <div class="card">
+      <div class="toggle">
+        <div><b>Resposta automática</b><div class="mut">responde sozinho os contatos liberados</div></div>
+        <div class="switch ${s.autoReply?'on':''}" id="autosw"><i></i></div>
+      </div>
+    </div>
+    <div class="card">
+      <b>Contatos liberados (${allow.length})</b>
+      <div class="mut" style="margin:4px 0 8px">só estes recebem resposta automática</div>
+      ${allow.length?allow.map(a=>`<div class="row"><span><span class="badge" style="background:var(--green)"></span>${esc(a.name)}</span><button class="red" onclick="rm('${a.id}')">remover</button></div>`).join(''):'<div class="mut">nenhum ainda — libere abaixo</div>'}
+    </div>
+    <div class="card">
+      <b>Conversas recentes</b>
+      <div class="mut" style="margin:4px 0 8px">toque em "liberar" p/ autorizar resposta automática</div>
+      ${chats.filter(c=>!c.isGroup).slice(0,12).map(c=>{
+        const on = allow.some(a=>a.id===c.id);
+        return `<div class="row"><span>${c.unread?'<span class="badge" style="background:var(--green)"></span>':''}${esc(c.name)} <span class="mut">${esc(c.last).slice(0,40)}</span></span>${on?'<span class="tag">liberado</span>':`<button class="green" onclick="add('${c.id}','${esc(c.name)}')">liberar</button>`}</div>`;
+      }).join('')||'<div class="mut">sem conversas</div>'}
+    </div>
+    ${log.length?`<div class="card"><b>Últimas auto-respostas</b>${log.slice(-6).reverse().map(l=>`<div class="row"><span class="mut">${esc(l.contact)}: "${esc(l.reply).slice(0,50)}"</span></div>`).join('')}</div>`:''}
+    <div style="text-align:center"><button class="red" onclick="disc()">desconectar WhatsApp</button></div>`;
+  $('#autosw').onclick = async () => { const on=!s.autoReply; await api('/auto','POST',{on}); s.autoReply=on; renderReady(s); };
+}
+async function add(id,name){ await api('/allow','POST',{id,name}); tick(); }
+async function rm(id){ await api('/allow?id='+encodeURIComponent(id),'DELETE'); tick(); }
+async function disc(){ if(confirm('Desconectar o WhatsApp do ELION?')){ await api('/disconnect','POST'); lastStatus=''; setTimeout(tick,800);} }
+const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+tick(); pollTimer=setInterval(tick,2000);
+</script>
+</body></html>

@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<!-- viewport-fit=cover + as áreas seguras no CSS: sem isso, em iPhone o entalhe
+     da câmera come o topo e a barra de gestos come os botões de baixo -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ELION-X · Central de Comando IA</title>
+
+<!-- ═══ INSTALAÇÃO NO CELULAR (PWA) ═══
+     Com estas cinco linhas o celular passa a oferecer "adicionar à tela
+     inicial": ícone próprio, tela cheia, sem barra de endereço. -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#010710">
+<link rel="icon" href="assets/elion.png">
+<!-- o iPhone ignora o manifesto para ícone e tela cheia; precisa das suas -->
+<link rel="apple-touch-icon" href="assets/elion.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ELION-X">
+<meta name="description" content="ELION-X — plataforma de super agente de IA classe JARVIS">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;900&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<!-- ▓▓ CAMADAS DE AMBIENTE ▓▓ -->
+<div id="bgGrid" aria-hidden="true"></div>
+<div id="scanlines" aria-hidden="true"></div>
+<div id="vignette" aria-hidden="true"></div>
+
+<!-- ▓▓ BOOT ▓▓ -->
+<div id="boot">
+  <div class="boot-core">
+    <div class="boot-ring"></div>
+    <div class="boot-ring r2"></div>
+    <div class="boot-glyph">EX</div>
+  </div>
+  <div class="boot-title">ELION<span>‑X</span></div>
+  <div class="boot-sub">INTELIGÊNCIA ARTIFICIAL CLASSE JARVIS</div>
+  <div id="bootLog" class="boot-log"></div>
+  <div class="boot-bar"><div id="bootBarFill"></div></div>
+  <button id="bootStart" disabled>◈ &nbsp;INICIAR SISTEMA</button>
+</div>
+
+<!-- ▓▓ TOPBAR ▓▓ -->
+<header id="topbar">
+  <div class="brand">
+    <div class="brand-core"><span></span></div>
+    <div class="brand-meta">
+      <div id="clock">00:00:00</div>
+      <div id="dateline">—</div>
+    </div>
+  </div>
+  <div class="top-title">
+    <div class="tt-name"><span>E-L-I-O-N</span> <b>X</b></div>
+    <div class="tt-sub">CENTRAL DE COMANDO IA · v3.0</div>
+  </div>
+  <div class="leds">
+    <div class="led" id="ledCore"><i></i>NÚCLEO</div>
+    <div class="led" id="ledNet"><i></i>REDE</div>
+    <div class="led" id="ledVoice"><i></i>VOZ</div>
+    <div class="led" id="ledCam"><i></i>CAM</div>
+  </div>
+</header>
+
+<!-- ▓▓ LAYOUT PRINCIPAL ▓▓ -->
+<main id="layout">
+
+  <!-- ── COLUNA ESQUERDA ── -->
+  <aside class="col" id="colLeft">
+
+    <section class="quad" id="qAgenda">
+      <header class="qhead">
+        <h2><span class="qico">▤</span> AGENDA <em>// CRONOGRAMA</em></h2>
+        <span class="qbadge" id="agendaCount">0</span>
+      </header>
+      <div class="qbody">
+        <div id="agendaList" class="agenda-list"></div>
+        <form id="agendaForm" autocomplete="off">
+          <input id="agTitle" type="text" placeholder="novo compromisso…" required>
+          <div class="ag-row">
+            <input id="agLocal" type="text" placeholder="⌖ local (opcional)">
+            <input id="agNotes" type="text" placeholder="observações (opcional)">
+          </div>
+          <div class="ag-row">
+            <input id="agDate" type="date" required>
+            <input id="agTime" type="time" required>
+            <button type="submit" title="registrar">＋</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="quad" id="qClima">
+      <header class="qhead">
+        <h2><span class="qico">◐</span> CLIMA <em>// METEOROLOGIA GLOBAL</em></h2>
+        <span class="qbadge live">SAT</span>
+      </header>
+      <div class="qbody">
+        <div class="clima-search">
+          <input id="climaQ" type="text" placeholder="qualquer cidade do mundo…">
+          <button id="climaGo">⌖</button>
+        </div>
+        <div id="climaNow" class="clima-now">
+          <div class="clima-loading">conectando satélites…</div>
+        </div>
+        <div id="climaDays" class="clima-days"></div>
+      </div>
+    </section>
+
+  </aside>
+
+  <!-- ── CENTRO: ESFERA ── -->
+  <section id="center">
+    <div id="sphereWrap">
+      <canvas id="sphereCanvas"></canvas>
+      <canvas id="avatarBg" style="display:none"></canvas>
+      <canvas id="avatarCanvas" style="display:none"></canvas>
+      <canvas id="avatarFx" style="display:none"></canvas>
+      <button id="faceToggle" title="assumir forma humana">☺ ROSTO</button>
+      <div class="ring-hud r1"></div>
+      <div class="ring-hud r2"></div>
+      <div id="coreReadout">
+        <div id="coreState">INICIALIZANDO</div>
+        <div id="coreSub">núcleo neural elion-x</div>
+      </div>
+    </div>
+
+    <div id="consolePanel">
+      <div class="console-head">
+        <span>◢ CANAL DE COMUNICAÇÃO</span>
+        <span class="console-dots"><i></i><i></i><i></i></span>
+      </div>
+      <div id="consoleMsgs"></div>
+    </div>
+  </section>
+
+  <!-- ── COLUNA DIREITA ── -->
+  <aside class="col" id="colRight">
+
+    <section class="quad" id="qNews">
+      <header class="qhead">
+        <h2><span class="qico">◎</span> NOTÍCIAS IA <em>// VARREDURA GLOBAL</em></h2>
+        <button class="qact" id="newsRefresh" title="atualizar">⟳</button>
+      </header>
+      <div class="qbody">
+        <div id="newsList" class="news-list">
+          <div class="news-loading">interceptando transmissões…</div>
+        </div>
+        <div id="newsUpdated" class="news-updated">—</div>
+      </div>
+    </section>
+
+    <section class="quad" id="qMarket">
+      <header class="qhead">
+        <h2><span class="qico">▦</span> MERCADO <em>// ANÁLISE TÉCNICA</em></h2>
+        <span class="qbadge live">LIVE</span>
+      </header>
+      <div class="qbody">
+        <div class="mkt-search">
+          <input id="mktQ" type="text" placeholder="ativo: AAPL · BTCUSD · PETR4…" autocomplete="off">
+          <button id="mktGo" title="carregar gráfico">⌖</button>
+          <button id="mktStudy" title="estudar em tela cheia">⤢</button>
+        </div>
+        <div id="mktChart" class="mkt-chart"><div class="mkt-empty">informe um ativo ou peça ao ELION‑X para analisar um gráfico</div></div>
+        <div id="mktAnalysis" class="mkt-analysis" hidden></div>
+        <div class="mkt-disc">⚠ Conteúdo educativo — não é recomendação de investimento</div>
+      </div>
+    </section>
+
+    <section class="quad" id="qCam">
+      <header class="qhead">
+        <h2><span class="qico">◉</span> VISÃO <em>// MONITOR ÓPTICO</em></h2>
+        <button id="camExpand" class="cam-expand-btn" title="ampliar / reduzir a câmera">⛶</button>
+        <span class="cam-dot" id="camDot"></span>
+      </header>
+      <div class="qbody">
+        <div class="cam-view">
+          <video id="camVideo" autoplay playsinline muted></video>
+          <canvas id="camOverlay" aria-hidden="true"></canvas>
+          <div id="camShade"><span>SENSOR DESLIGADO</span><small>peça ao ELION‑X para "analisar a câmera"</small></div>
+          <div class="cam-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <div id="camScanline" aria-hidden="true"></div>
+          <div id="camHud" aria-hidden="true"><span id="camHudL">◉ ÓPTICO</span><span id="camHudR">IoT VISION</span></div>
+        </div>
+        <div id="camStats" class="cam-stats"></div>
+        <div class="cam-pick">
+          <span class="cam-pick-ic">⏿</span>
+          <select id="camSelect" title="escolher câmera"><option value="">câmera padrão</option></select>
+        </div>
+        <div class="cam-actions">
+          <button id="camToggle">ATIVAR SENSOR</button>
+          <button id="camScan" disabled>⌖ ANALISAR CENA</button>
+        </div>
+        <div id="camOut" class="cam-out">Aguardando varredura óptica…</div>
+      </div>
+    </section>
+    <div id="camBackdrop" hidden></div>
+
+  </aside>
+</main>
+
+<!-- ▓▓ DOCK DE COMANDO ▓▓ -->
+<footer id="dock">
+  <canvas id="wave" width="220" height="46"></canvas>
+  <button id="micBtn" title="modo conversa · botão direito (ou toque longo no celular): calibrar a escuta">
+    <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2Z"/></svg>
+  </button>
+  <button id="liveBtn" title="conversa contínua em tempo real">AO VIVO</button>
+  <div class="cmd-wrap">
+    <span class="cmd-prefix">❯</span>
+    <input id="cmd" type="text" placeholder="transmita seu comando, Senhor…" autocomplete="off">
+  </div>
+  <button id="sendBtn" title="enviar">⮞</button>
+  <div class="quick">
+    <button class="qa" id="qaScan">CÂMERA</button>
+    <button class="qa" id="qaClima">CLIMA</button>
+    <button class="qa" id="qaNews">NOTÍCIAS</button>
+    <button class="qa" id="qaEmail">EMAIL</button>
+    <button class="qa" id="qaWhats">WHATSAPP</button>
+    <button class="qa" id="qaDoc">📎 DOC</button>
+    <button class="qa" id="qaCouncil">⚖ CONSELHO</button>
+    <button class="qa" id="qaMarket">▦ MERCADO</button>
+    <button class="qa" id="qaAgenda">AGENDA</button>
+    <button class="qa" id="qaCyber">⛨ CYBER</button>
+    <button class="qa" id="qaNasa">🛰 NASA</button>
+    <button class="qa" id="qaBrain">⬡ PAINEL</button>
+  </div>
+  <input type="file" id="docInput" accept=".pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.json,.xml,.html,.htm,.yaml,.yml,.log,.ini,.cfg,.conf,.env,.sql,.sh,.ps1,.bat,.js,.mjs,.cjs,.ts,.tsx,.jsx,.py,.java,.cs,.c,.cpp,.h,.go,.rb,.php,.css,.rtf,.png,.jpg,.jpeg,.webp,.gif" hidden>
+</footer>
+
+<!-- ▓▓ VISOR WEB — segunda tela embutida ▓▓ -->
+<div id="webVisor" hidden>
+  <div class="wv-head">
+    <span class="wv-led"></span>
+    <span id="wvTitle">VISOR WEB</span>
+    <div class="wv-actions">
+      <button id="wvMode" title="alternar site/leitura">LEITURA</button>
+      <button id="wvOpen" title="abrir em nova aba">↗</button>
+      <button id="wvClose" title="fechar visor">✕</button>
+    </div>
+  </div>
+  <div class="wv-body">
+    <iframe id="wvFrame" title="visor web" referrerpolicy="no-referrer"></iframe>
+    <div id="wvReader" hidden></div>
+    <div id="wvLoading"><span></span>estabelecendo conexão segura…</div>
+  </div>
+  <div class="wv-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+</div>
+
+<!-- ▓▓ MINI TV DA LOTERIA — painel de sorteio, abre e some por comando de voz ▓▓ -->
+<div id="tvWrap" hidden>
+  <div id="tvBackdrop"></div>
+  <div id="tvBolt" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div id="tvSet">
+    <div class="tv-bezel">
+      <div class="tv-brand"><span class="tv-led"></span> ELION-X · SORTEIO</div>
+      <div class="tv-screen">
+        <div class="tv-head">
+          <h4 id="tvJogo">MEGA-SENA</h4>
+          <span id="tvTag">combinações geradas</span>
+        </div>
+        <div id="tvBolas" class="tv-bolas"></div>
+        <div id="tvJogos" class="tv-jogos"></div>
+        <div id="tvInfo" class="tv-info"></div>
+        <div class="tv-glass" aria-hidden="true"></div>
+        <div class="tv-scan" aria-hidden="true"></div>
+      </div>
+      <div class="tv-base">
+        <button id="tvPrev" title="anterior">‹</button>
+        <span id="tvPag">1 / 1</span>
+        <button id="tvNext" title="próximo">›</button>
+        <button id="tvOff" title="desligar">⏻ DESLIGAR</button>
+      </div>
+    </div>
+    <div class="tv-pe" aria-hidden="true"></div>
+  </div>
+</div>
+
+<!-- ▓▓ MONITOR DE VÍDEO — segunda tela em forma de monitor de computador ▓▓ -->
+<div id="monitorWrap" hidden>
+  <div id="monitorBackdrop"></div>
+  <div id="monitorBolt" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div id="monitorSet">
+    <div class="mon-bezel">
+      <div class="mon-screen">
+        <iframe id="monFrame" title="monitor de vídeo" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+        <div class="mon-glass" aria-hidden="true"></div>
+        <div class="mon-scan" aria-hidden="true"></div>
+        <div class="mon-boot" aria-hidden="true"><span></span></div>
+        <!-- carregado, mas em PAUSA — só toca quando o operador confirma -->
+        <button id="monReady" class="mon-overlay" title="clique ou diga 'sim' para iniciar">
+          <span class="mon-overlay-ring"><span class="mon-overlay-play">▶</span></span>
+          <span class="mon-overlay-txt">PRONTO PARA EXIBIR<br><b>diga “sim” ou clique para iniciar</b></span>
+        </button>
+        <!-- vídeo pausado a pedido (botão 🎙 falar) — aguardando o próximo comando -->
+        <div id="monPausedTag" class="mon-overlay mon-overlay-paused" aria-hidden="true">
+          <span class="mon-overlay-txt">⏸ PAUSADO — ESCUTANDO<br><b>diga “continua” ou “fecha o monitor”</b></span>
+        </div>
+      </div>
+      <div class="mon-chin">
+        <span class="mon-brand">E‑L‑I‑O‑N <b>VISION</b></span>
+        <span class="mon-led" aria-hidden="true"></span>
+      </div>
+    </div>
+    <div class="mon-neck" aria-hidden="true"></div>
+    <div class="mon-base" aria-hidden="true"></div>
+    <div class="mon-info">
+      <div class="mon-title" id="monTitle"></div>
+      <div class="mon-meta" id="monMeta"></div>
+      <div class="mon-actions">
+        <button id="monTalk" title="pausar e falar com o Elion">🎙 FALAR</button>
+        <button id="monYT" title="abrir no YouTube">↗ YOUTUBE</button>
+        <button id="monOff" title="desligar o monitor">⏻ DESLIGAR</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ▓▓ OVERLAY DE ARRASTAR DOCUMENTO ▓▓ -->
+<div id="dropZone">
+  <div class="dz-inner">
+    <div class="dz-icon">📄</div>
+    <div class="dz-title">SOLTE O DOCUMENTO AQUI</div>
+    <div class="dz-sub">PDF · WORD · POWERPOINT · TXT — o ELION‑X vai ler e analisar</div>
+  </div>
+</div>
+
+<!-- ▓▓ SELETOR DE CONSELHO DE DECISÃO ▓▓ -->
+<div id="councilModal" hidden>
+  <div class="cm-box">
+    <div class="cm-head">
+      <span class="cm-led"></span>
+      <span class="cm-title">⚖ CONVOCAR CONSELHO DE DECISÃO</span>
+      <button id="cmClose" title="fechar">✕</button>
+    </div>
+    <div class="cm-body">
+      <div class="cm-sec">MODELO DE CONSELHO</div>
+      <div class="cm-row" id="cmModes">
+        <button class="cm-mode" data-mode="quick"><b>RÁPIDO</b><small>3 conselheiros + advogado do diabo · gut-check</small></button>
+        <button class="cm-mode" data-mode="full"><b>COMPLETO</b><small>5 + revisão por pares + chairman</small></button>
+        <button class="cm-mode sel" data-mode="jury"><b>JÚRI</b><small>5 + revisão por pares + 3 juízes · decisão crítica</small></button>
+      </div>
+
+      <div class="cm-sec">MODIFICADORES <small style="opacity:.6">(empilháveis)</small></div>
+      <div class="cm-row cm-flags" id="cmFlags">
+        <button class="cm-flag" data-flag="confidence"><b>⚖ CONFIANÇA</b><small>voto ponderado por confiança (1–10)</small></button>
+        <button class="cm-flag" data-flag="adaptive"><b>↻ ADAPTATIVO</b><small>roda em rodadas até convergir</small></button>
+        <button class="cm-flag" data-flag="measureDiversity"><b>◫ DIVERSIDADE</b><small>detecta consenso teatral</small></button>
+      </div>
+
+      <div class="cm-sec">A DECISÃO / DILEMA</div>
+      <textarea id="cmQuestion" placeholder="Ex.: Devo migrar o ELION-X para Next.js agora ou consolidar a versão atual primeiro?"></textarea>
+    </div>
+    <div class="cm-foot">
+      <span id="cmCost" class="cm-cost"></span>
+      <div class="cm-foot-btns">
+        <button id="cmCancel" class="cm-ghost">Cancelar</button>
+        <button id="cmGo" class="cm-go">CONVOCAR ⮞</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+<canvas id="grabCanvas" width="768" height="576" hidden></canvas>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ── Núcleo global compartilhado ── */
+window.ELX = {
+  state: 'boot',                 // boot | idle | listening | thinking | speaking | live
+  bus: new EventTarget(),
+  setState(s) {
+    if (this.state === s) return;
+    this.state = s;
+    this.bus.dispatchEvent(new CustomEvent('state', { detail: s }));
+    const el = document.getElementById('coreState');
+    const sub = document.getElementById('coreSub');
+    if (!el) return;
+    const map = {
+      idle:      ['OPERACIONAL',   'aguardando instruções'],
+      listening: ['ESCUTANDO',     'capturando áudio do operador'],
+      thinking:  ['PROCESSANDO',   'malha neural em atividade'],
+      speaking:  ['TRANSMITINDO',  'síntese vocal ativa'],
+      live:      ['LINK NEURAL',   'conversa em tempo real'],
+      boot:      ['INICIALIZANDO', 'núcleo neural elion-x'],
+    };
+    const [a, b] = map[s] || map.idle;
+    el.textContent = a; sub.textContent = b;
+    el.dataset.s = s;
+  },
+  audio: { bands: () => ({ bass: 0, mid: 0, treble: 0, level: 0 }) }, // substituído por voice.js
+};
+</script>
+<script src="assets/vendor/GLTFLoader.js"></script>
+<script src="assets/sphere.js"></script>
+<script src="assets/avatar.js"></script>
+<script src="assets/voice.js"></script>
+<script src="assets/face.js"></script>
+<script src="assets/voiceid.js"></script>
+<script src="assets/quadrants.js"></script>
+<script src="assets/nasa.js"></script>
+<script src="assets/agent.js"></script>
+<script>
+/* Registra o service worker — é ele que faz o celular oferecer a instalação.
+   Falhar aqui NÃO pode derrubar a plataforma: sem ele o ELION funciona
+   igual, só não vira ícone na tela inicial. Por isso o catch silencioso. */
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js')
+      .catch(e => console.warn('[pwa] service worker não registrou:', e.message));
+  });
+}
+</script>
+</body>
+</html>
