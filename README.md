@@ -1,5 +1,20 @@
 # ELION-X
 
+[English](README.en.md) · **Português**
+
+<p align="center">
+  <img src="docs/media/demo.gif" alt="ELION-X em funcionamento: a esfera desperta, fala a saudação, recebe uma pergunta sobre o tempo, chama a ferramenta de clima e responde" width="800">
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="Licença MIT" src="https://img.shields.io/badge/licen%C3%A7a-MIT-00e5ff"></a>
+  <img alt="Node.js puro" src="https://img.shields.io/badge/Node.js-puro%2C%200%20frameworks-3c873a">
+  <img alt="49 capacidades" src="https://img.shields.io/badge/capacidades-49-00e5ff">
+  <a href="docs/COMO-FOI-CONSTRUIDO.md"><img alt="Manual de engenharia" src="https://img.shields.io/badge/manual%20de%20engenharia-7%20documentos-7b61ff"></a>
+</p>
+
+> ⭐ **Se este projeto te ensinou algo, deixe uma estrela** — é o que faz ele chegar a mais gente.
+
 **Central de comando por inteligência artificial — classe JARVIS.**
 Plataforma web que conversa por voz e texto, enxerga pelas câmeras, reconhece pessoas
 pelo rosto e pela voz, opera o WhatsApp, investiga fontes primárias oficiais e vigia
@@ -66,6 +81,15 @@ node server.js            # → http://localhost:3001
 
 Abra no **Chrome ou Edge** — o reconhecimento de voz do navegador só existe neles.
 Clique em **INICIAR SISTEMA** e permita microfone, câmera e localização.
+
+<p align="center"><img src="docs/media/interface.png" alt="A interface do ELION-X: agenda, clima, esfera neural ao centro, notícias, mercado e visão" width="800"></p>
+
+Na primeira vez, copie o modelo de perfil — é ali que você diz à plataforma quem você é
+(o arquivo fica fora do git):
+
+```bash
+cp operador.exemplo.json data/operador.json
+```
 
 Diagnóstico: `GET /api/status`
 
