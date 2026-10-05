@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ELION-X · PACTO</title>
+<style>
+  :root{--cyan:#00e5ff;--green:#00ff9d;--red:#ff2a4a;--amber:#ffc44d;--muted:#9bd0ee;--border:rgba(0,229,255,.22)}
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(800px 500px at 50% 0%,#04182e,#010810 70%);color:#c9e9f8;
+    font-family:'Segoe UI',sans-serif;padding:18px 16px;min-height:100vh}
+  .wrap{max-width:880px;margin:0 auto}
+  h2{font-size:16px;letter-spacing:3px;margin:0 0 4px;color:#eafcff}
+  h2 b{color:var(--green)}
+  h3{font-size:12px;letter-spacing:2px;color:var(--muted);margin:0 0 12px;font-weight:600}
+  .sub{font-size:11px;color:var(--muted);margin-bottom:16px;letter-spacing:1px}
+  .card{background:rgba(2,13,26,.7);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px}
+  button{font-family:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--border);
+    background:rgba(0,229,255,.08);color:var(--cyan);padding:9px 16px;font-size:13px;letter-spacing:1px;transition:.2s}
+  button:hover:not(:disabled){background:rgba(0,229,255,.2)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.green{color:var(--green);border-color:rgba(0,255,157,.3);background:rgba(0,255,157,.08)}
+  button.red{color:var(--red);border-color:rgba(255,42,74,.3);background:rgba(255,42,74,.08)}
+  button.amber{color:var(--amber);border-color:rgba(255,196,77,.3);background:rgba(255,196,77,.08)}
+  label{display:block;font-size:11px;letter-spacing:1px;color:var(--muted);margin:10px 0 4px}
+  input,textarea{background:rgba(0,18,34,.7);border:1px solid var(--border);border-radius:5px;color:#c9e9f8;padding:9px;font-size:13px;width:100%;font-family:inherit}
+  textarea{min-height:160px;resize:vertical;line-height:1.5}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+  @media (max-width:640px){.grid{grid-template-columns:1fr}}
+  .tabs{display:flex;gap:6px;margin:14px 0 10px;flex-wrap:wrap}
+  .tabs button.on{background:rgba(0,229,255,.22);color:#eafcff}
+  .warn{font-size:12px;color:var(--amber);background:rgba(255,196,77,.08);border:1px solid rgba(255,196,77,.25);border-radius:6px;padding:10px;line-height:1.5;margin:10px 0}
+  .err{color:var(--red);font-size:12px;margin-top:8px;min-height:1em}
+  .consent{display:flex;gap:10px;align-items:flex-start;font-size:13px;margin:14px 0;line-height:1.4;cursor:pointer}
+  .consent input{width:auto;margin-top:3px}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid rgba(0,229,255,.08);font-size:13px;flex-wrap:wrap}
+  .row:last-child{border:0}
+  .mut{color:var(--muted);font-size:11px}
+  .st{font-size:10px;border-radius:3px;padding:2px 7px;letter-spacing:1px;text-transform:uppercase;border:1px solid}
+  .st.pronto{color:var(--green);border-color:rgba(0,255,157,.35)}
+  .st.erro{color:var(--red);border-color:rgba(255,42,74,.35)}
+  .st.andamento{color:var(--amber);border-color:rgba(255,196,77,.35)}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;font-size:11px}
+  .chip{border:1px solid var(--border);border-radius:12px;padding:3px 10px}
+  .chip.ok{color:var(--green);border-color:rgba(0,255,157,.3)}
+  .chip.no{color:var(--muted);opacity:.7}
+  .rec{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--red);box-shadow:0 0 10px var(--red);animation:p 1s infinite}
+  @keyframes p{50%{opacity:.25}}
+  iframe{width:100%;height:70vh;border:0;border-radius:8px;background:#fff}
+  .acoes{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+  .hidden{display:none}
+  a{color:var(--cyan)}
+</style></head>
+<body><div class="wrap">
+  <h2>PACTO <b>· ELION-X</b></h2>
+  <div class="sub">inteligência de negociação pós-reunião · diagnóstico, playbook do retorno e próximos passos</div>
+  <div class="card"><div class="chips" id="chips">verificando…</div></div>
+
+  <!-- NOVA REUNIÃO -->
+  <div class="card" id="nova">
+    <h3>NOVA REUNIÃO</h3>
+    <div class="grid">
+      <div><label for="titulo">TÍTULO</label><input id="titulo" placeholder="Ex.: Proposta de IoT — frota"></div>
+      <div><label for="cliente">CLIENTE / OUTRA PARTE</label><input id="cliente" placeholder="Empresa e nomes de quem estava"></div>
+      <div><label for="operador">SEU NOME (COMO APARECE NA REUNIÃO)</label><input id="operador"></div>
+      <div><label for="empresa">SUA EMPRESA</label><input id="empresa"></div>
+    </div>
+    <label for="objetivo">OBJETIVO DA REUNIÃO</label><input id="objetivo" placeholder="Ex.: fechar piloto de 3 meses com 50 dispositivos">
+    <label for="observacoes">OBSERVAÇÕES (opcional)</label><input id="observacoes" placeholder="Ex.: concorrente já apresentou proposta">
+
+    <div class="tabs" role="tablist">
+      <button class="on" data-modo="arquivo">ARQUIVO DE ÁUDIO</button>
+      <button data-modo="gravar">GRAVAR AGORA</button>
+      <button data-modo="texto">COLAR TRANSCRIÇÃO</button>
+    </div>
+    <div data-painel="arquivo">
+      <input type="file" id="arquivo" accept="audio/*,video/mp4,video/webm">
+      <div class="mut" style="margin-top:6px">MP3, M4A, WAV, OGG, WEBM · até 500 MB. O áudio é apagado depois da transcrição.</div>
+    </div>
+    <div data-painel="gravar" class="hidden">
+      <div class="rec">
+        <button class="red" id="btnRec">● INICIAR GRAVAÇÃO</button>
+        <span id="recInfo" class="mut">Usa o microfone deste aparelho. No celular, mantenha a tela ligada.</span>
+      </div>
+    </div>
+    <div data-painel="texto" class="hidden">
+      <textarea id="texto" placeholder="Uma fala por linha, no formato  Nome: fala&#10;Ex.:&#10;Ana: Gostamos da proposta, mas o preço está acima do orçamento.&#10;Dione: Entendo. Qual valor vocês têm aprovado para este ano?"></textarea>
+      <div class="mut" style="margin-top:6px">Serve para testar sem chave de transcrição, ou para reuniões já transcritas pelo Teams/Meet.</div>
+    </div>
+
+    <label class="consent"><input type="checkbox" id="consent">
+      <span>Todos os participantes foram avisados de que a reunião foi gravada e será analisada.</span></label>
+    <button class="green" id="btnAnalisar">ANALISAR REUNIÃO</button>
+    <div class="err" id="erro"></div>
+  </div>
+
+  <!-- RELATÓRIO ABERTO -->
+  <div class="card hidden" id="painelRel">
+    <div class="row" style="padding-top:0"><h3 style="margin:0" id="relTitulo">RELATÓRIO</h3><button id="btnFechar">FECHAR</button></div>
+    <div id="relEstado" class="mut"></div>
+    <div class="acoes hidden" id="relAcoes">
+      <button class="green" data-enviar="email">EMAIL PARA MIM</button>
+      <button class="green" data-enviar="whatsapp">WHATSAPP PARA MIM</button>
+      <button class="amber" id="btnTerceiro">ENVIAR ATA AO CLIENTE (NÍVEL 5)</button>
+      <button id="btnAbrir">ABRIR EM NOVA ABA</button>
+    </div>
+    <div class="err" id="relErro"></div>
+    <iframe id="relFrame" class="hidden" title="Relatório da reunião"></iframe>
+  </div>
+
+  <!-- HISTÓRICO -->
+  <div class="card">
+    <h3>REUNIÕES</h3>
+    <div id="lista" class="mut">carregando…</div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function api(p, opt = {}) {
+  const r = await fetch('/api/pacto' + p, opt);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(j.error || 'HTTP ' + r.status); e.status = r.status; throw e; }
+  return j;
+}
+const ANDAMENTO = ['aguardando_audio', 'transcrevendo', 'analisando'];
+let modo = 'arquivo', aberta = null, poll = null, status = {};
+
+// ── lembra os campos fixos do operador (só neste navegador) ──
+try { for (const k of ['operador', 'empresa']) $('#' + k).value = localStorage.getItem('pacto.' + k) || ''; } catch {}
+
+async function carregarStatus() {
+  try { status = await api('/status'); } catch { status = {}; }
+  const chip = (ok, t) => `<span class="chip ${ok ? 'ok' : 'no'}">${ok ? '✓' : '○'} ${t}</span>`;
+  $('#chips').innerHTML = [
+    chip(status.anthropic, 'Claude · ' + (status.modelo || '')),
+    chip(status.sttConfigurado, 'Transcrição · ' + (status.stt || '')),
+    chip(status.gmailEnvio, status.gmail && !status.gmailEnvio ? 'Gmail (reautorize p/ envio)' : 'Gmail'),
+    chip(status.whatsapp, 'WhatsApp'),
+  ].join('') + (status.gmail && !status.gmailEnvio ? ' <a href="/oauth/google/start" class="mut">reautorizar Gmail</a>' : '');
+}
+
+// ── abas de entrada ──
+$$('.tabs button').forEach(b => b.onclick = () => {
+  modo = b.dataset.modo;
+  $$('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+  $$('[data-painel]').forEach(p => p.classList.toggle('hidden', p.dataset.painel !== modo));
+});
+
+// ── gravação no próprio aparelho (o celular faz o papel do dispositivo até ele existir) ──
+let gravador = null, pedacos = [], gravado = null, inicioRec = 0, relogio = null;
+$('#btnRec').onclick = async () => {
+  if (gravador?.state === 'recording') { gravador.stop(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true } });
+    const tipo = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find(t => window.MediaRecorder?.isTypeSupported?.(t)) || '';
+    gravador = new MediaRecorder(stream, tipo ? { mimeType: tipo, audioBitsPerSecond: 32000 } : undefined);
+    pedacos = []; gravado = null;
+    gravador.ondataavailable = e => e.data.size && pedacos.push(e.data);
+    gravador.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      clearInterval(relogio);
+      gravado = new Blob(pedacos, { type: (gravador.mimeType || 'audio/webm').split(';')[0] });
+      $('#btnRec').textContent = '● GRAVAR DE NOVO';
+      $('#recInfo').textContent = `Gravação pronta · ${(gravado.size / 1048576).toFixed(1)} MB. Clique em ANALISAR REUNIÃO.`;
+    };
+    gravador.start(10000);
+    inicioRec = Date.now();
+    $('#btnRec').textContent = '■ PARAR';
+    relogio = setInterval(() => {
+      const s = Math.round((Date.now() - inicioRec) / 1000);
+      $('#recInfo').innerHTML = `<span class="dot" style="display:inline-block"></span> gravando ${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    }, 500);
+  } catch (e) { $('#erro').textContent = 'Microfone indisponível: ' + e.message; }
+};
+
+// ── enviar para análise ──
+$('#btnAnalisar').onclick = async () => {
+  $('#erro').textContent = '';
+  const contexto = Object.fromEntries(['titulo', 'cliente', 'operador', 'empresa', 'objetivo', 'observacoes'].map(k => [k, $('#' + k).value]));
+  try { localStorage.setItem('pacto.operador', contexto.operador); localStorage.setItem('pacto.empresa', contexto.empresa); } catch {}
+  if (!$('#consent').checked) return $('#erro').textContent = 'Confirme o aviso de gravação aos participantes.';
+
+  let audio = null, transcricao = '';
+  if (modo === 'arquivo') { audio = $('#arquivo').files[0]; if (!audio) return $('#erro').textContent = 'Escolha o arquivo de áudio.'; }
+  if (modo === 'gravar') { audio = gravado; if (!audio) return $('#erro').textContent = 'Grave a reunião primeiro.'; }
+  if (modo === 'texto') { transcricao = $('#texto').value.trim(); if (!transcricao) return $('#erro').textContent = 'Cole a transcrição.'; }
+  if (audio && !status.sttConfigurado) return $('#erro').textContent = `Transcrição de áudio não configurada (${status.stt}). Defina a chave no .env ou use COLAR TRANSCRIÇÃO.`;
+
+  const btn = $('#btnAnalisar'); btn.disabled = true; btn.textContent = 'ENVIANDO…';
+  try {
+    const { id } = await api('/reunioes', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contexto, consentimento: true, transcricao }) });
+    if (audio) await api(`/reunioes/${id}/audio`, { method: 'PUT', headers: { 'Content-Type': audio.type || 'application/octet-stream' }, body: audio });
+    $('#texto').value = ''; $('#arquivo').value = ''; gravado = null; $('#consent').checked = false;
+    abrir(id);
+    listar();
+  } catch (e) { $('#erro').textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = 'ANALISAR REUNIÃO'; }
+};
+
+// ── histórico ──
+const rotuloStatus = s => s === 'pronto' ? 'pronto' : s === 'erro' ? 'erro' : 'andamento';
+async function listar() {
+  try {
+    const { reunioes } = await api('/reunioes');
+    $('#lista').innerHTML = reunioes.length ? reunioes.map(r => `
+      <div class="row">
+        <div><div>${esc(r.titulo)}</div><div class="mut">${esc(r.cliente || '')} · ${new Date(r.criadoEm).toLocaleString('pt-BR')}</div></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="st ${rotuloStatus(r.status)}">${esc(r.status === 'pronto' ? 'pronto' : r.status === 'erro' ? 'erro' : r.etapa)}</span>
+          <button data-abrir="${r.id}">ABRIR</button>
+          <button class="red" data-apagar="${r.id}" title="Apagar reunião e relatório">✕</button>
+        </div>
+      </div>`).join('') : 'Nenhuma reunião ainda.';
+    if (reunioes.some(r => ANDAMENTO.includes(r.status))) setTimeout(listar, 5000);
+  } catch (e) { $('#lista').textContent = e.message; }
+}
+$('#lista').onclick = async e => {
+  const a = e.target.dataset.abrir, d = e.target.dataset.apagar;
+  if (a) abrir(a);
+  if (d && confirm('Apagar esta reunião, a transcrição e o relatório? Não dá para desfazer.')) {
+    await api('/reunioes/' + d, { method: 'DELETE' }).catch(() => {});
+    if (aberta === d) fechar();
+    listar();
+  }
+};
+
+// ── relatório aberto ──
+function fechar() { aberta = null; clearTimeout(poll); $('#painelRel').classList.add('hidden'); }
+$('#btnFechar').onclick = fechar;
+async function abrir(id) {
+  aberta = id; clearTimeout(poll);
+  $('#painelRel').classList.remove('hidden');
+  $('#relErro').textContent = '';
+  let r;
+  try { r = await api('/reunioes/' + id); } catch (e) { $('#relErro').textContent = e.message; return; }
+  if (aberta !== id) return;
+  $('#relTitulo').textContent = r.contexto.titulo.toUpperCase();
+  const pronto = r.status === 'pronto';
+  $('#relAcoes').classList.toggle('hidden', !pronto);
+  $('#relFrame').classList.toggle('hidden', !pronto);
+  if (pronto) {
+    $('#relEstado').textContent = `${r.citacoes?.verificadas ?? 0}/${r.citacoes?.total ?? 0} citações verificadas na transcrição · análise ${r.modelo || ''}` +
+      (r.entregas?.length ? ` · enviado ${r.entregas.length}x` : '');
+    if ($('#relFrame').dataset.id !== id) { $('#relFrame').src = `/api/pacto/reunioes/${id}/relatorio`; $('#relFrame').dataset.id = id; }
+  } else if (r.status === 'erro') {
+    $('#relEstado').textContent = '';
+    $('#relErro').textContent = 'Falhou: ' + r.erro;
+  } else {
+    $('#relEstado').textContent = r.etapa + ' (atualiza sozinho)';
+    poll = setTimeout(() => abrir(id), 4000);
+  }
+  $('#painelRel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+$('#btnAbrir').onclick = () => aberta && window.open(`/api/pacto/reunioes/${aberta}/relatorio`, '_blank');
+
+async function enviar(canal, destino = '', confirmar = false) {
+  $('#relErro').textContent = '';
+  try {
+    const j = await api(`/reunioes/${aberta}/enviar`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ canal, destino, confirmar }) });
+    $('#relEstado').textContent = `Enviado por ${canal} para ${j.destino} (nível ${j.nivel}).`;
+  } catch (e) { $('#relErro').textContent = e.message; }
+}
+$$('[data-enviar]').forEach(b => b.onclick = () => enviar(b.dataset.enviar));
+$('#btnTerceiro').onclick = () => {
+  const canal = prompt('Canal do envio ao cliente: digite  email  ou  whatsapp', 'email');
+  if (!canal || !['email', 'whatsapp'].includes(canal.trim().toLowerCase())) return;
+  const destino = prompt(canal.trim() === 'email' ? 'Email do destinatário:' : 'Número (com DDI e DDD) ou nome do contato:');
+  if (!destino) return;
+  /* Nível 5: sai da empresa e não volta. O servidor manda só a ATA (promessas e
+     próximos passos combinados) — o diagnóstico, que é a estratégia, nunca vai. */
+  if (!confirm(`NÍVEL 5 — AÇÃO IRREVERSÍVEL\n\nSerá enviada a ATA (compromissos e próximos passos combinados) para ${destino}.\nO diagnóstico e a sua estratégia NÃO são enviados.\n\nConfirmar envio?`)) return;
+  enviar(canal.trim().toLowerCase(), destino.trim(), true);
+};
+
+carregarStatus();
+listar();
+</script>
+</body></html>

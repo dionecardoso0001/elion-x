@@ -165,6 +165,7 @@ Duas decisões que valem a pena copiar:
 | `assets/avatar.js` | 773 | Avatar holográfico e movimento labial por formantes |
 | `assets/agent.js` | 581 | Cliente do laço agêntico e eventos de interface |
 | `intel.mjs` | 530 | Investigação em fontes primárias |
+| `pacto.mjs` | 581 | PACTO — diagnóstico de negociação pós-reunião ([guia](docs/PACTO.md)) |
 | `assets/cyber.css` | 530 | Estilo do painel de segurança |
 | `assets/voiceid.js` | 437 | Biometria vocal — captura, pitch, LTAS, identificação |
 | `index.html` | 420 | Estrutura da interface |

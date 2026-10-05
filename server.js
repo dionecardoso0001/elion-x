@@ -33,6 +33,7 @@ import { analisarDocumento, sumarioTexto, fatosTexto, expandirBusca } from './co
 import { openaiStream, openaiVisao, openaiTexto, devoDesviar, motivoDoDesvio } from './fallback.mjs';
 import { blocoIdentidade, blocoIdentidadeCurto, lerPerfil } from './perfil.mjs';
 import { investigarAntenas, garantirNoAr, TOOL_SIGNALX, BASE as SIGNALX_URL } from './signalx.mjs';
+import * as PACTO from './pacto.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1850,7 +1851,10 @@ function memText() {
 //  A senha do operador NUNCA passa pelo ELION: ele só recebe um token de leitura.
 // ═══════════════════════════════════════════════════════════════════════════
 const GOOGLE_REDIRECT = `${PUBLIC_URL}/oauth/google/callback`;
-const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+/* gmail.send entrou com o PACTO (relatório de reunião por e-mail). Quem conectou
+   o Gmail antes disso tem um token só de leitura: o envio avisa para reautorizar. */
+const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
+const GMAIL_SCOPE = `https://www.googleapis.com/auth/gmail.readonly ${GMAIL_SEND_SCOPE}`;
 
 function gtokRead() {
   try { return JSON.parse(fs.readFileSync(GTOKEN_FILE, 'utf8')); } catch { return null; }
@@ -1949,6 +1953,42 @@ async function gmailRead(id) {
   if (!body && m.payload?.body?.data) body = b64urlDecode(m.payload.body.data);
   body = body.replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 4000);
   return { from: h.from, subject: h.subject, date: h.date, body: body || m.snippet || '' };
+}
+
+const gmailPodeEnviar = () => String(gtokRead()?.scope || '').split(/\s+/).includes(GMAIL_SEND_SCOPE);
+
+/** endereço da própria conta conectada — destino padrão dos relatórios do PACTO */
+async function gmailProprioEndereco() {
+  const j = await gmailFetch('profile', await googleAccessToken());
+  return j.emailAddress || '';
+}
+
+/** envia um email HTML (com alternativa em texto) pela conta do operador */
+async function gmailEnviar({ to, subject, html, text }) {
+  if (!gmailPodeEnviar()) throw new Error('O Gmail foi conectado só com permissão de leitura — reautorize em /oauth/google/start para liberar o envio.');
+  const token = await googleAccessToken();
+  const b64 = s => Buffer.from(s, 'utf8').toString('base64').replace(/(.{76})/g, '$1\r\n');
+  const fronteira = 'pacto_' + crypto.randomBytes(8).toString('hex');
+  const mime = [
+    `To: ${to.replace(/[\r\n]/g, '')}`,
+    `Subject: =?UTF-8?B?${Buffer.from(subject.replace(/[\r\n]/g, ' '), 'utf8').toString('base64')}?=`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/alternative; boundary="${fronteira}"`,
+    '',
+    `--${fronteira}`, 'Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: base64', '', b64(text || ''),
+    `--${fronteira}`, 'Content-Type: text/html; charset=UTF-8', 'Content-Transfer-Encoding: base64', '', b64(html),
+    `--${fronteira}--`, '',
+  ].join('\r\n');
+  const raw = Buffer.from(mime, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ raw }),
+    signal: AbortSignal.timeout(30000),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error?.message || `Gmail HTTP ${r.status}`);
+  return j.id;
 }
 
 function emailsText(items) {
@@ -5020,6 +5060,94 @@ IMPORTANTE: responda com JSON CRU, sem cercas de código markdown (nada de crase
         res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(page(false, 'Falha: ' + e.message));
       }
+    }
+
+    // ── PACTO: inteligência de negociação pós-reunião ──
+    if (url.pathname === '/api/pacto/status' && req.method === 'GET') {
+      return json(res, 200, {
+        anthropic: !!API_KEY, modelo: process.env.PACTO_MODEL || 'claude-opus-5-5',
+        stt: PACTO.provedorSTT(), sttConfigurado: PACTO.sttConfigurado(),
+        gmail: gmailConnected(), gmailEnvio: gmailConnected() && gmailPodeEnviar(),
+        whatsapp: WA ? WA.getState().connected : false,
+      });
+    }
+    if (url.pathname === '/api/pacto/reunioes') {
+      if (req.method === 'GET') return json(res, 200, { reunioes: PACTO.listarReunioes() });
+      if (req.method === 'POST') {
+        /* cria a reunião; se a transcrição vier colada, já começa a análise.
+           Com áudio, o navegador envia em seguida para /reunioes/:id/audio. */
+        const { contexto, consentimento, transcricao } = JSON.parse(await readBody(req) || '{}');
+        try {
+          const r = PACTO.criarReuniao({ contexto, consentimento });
+          if (typeof transcricao === 'string' && transcricao.trim()) {
+            PACTO.processar(r.id, { texto: transcricao, apiKey: API_KEY });   // segundo plano
+          }
+          return json(res, 200, { id: r.id });
+        } catch (e) { return json(res, 400, { error: e.message }); }
+      }
+    }
+    const rotaPacto = url.pathname.match(/^\/api\/pacto\/reunioes\/([a-f0-9]{16})(?:\/(audio|relatorio|enviar))?$/);
+    if (rotaPacto) {
+      const [, id, acao] = rotaPacto;
+      const reuniao = PACTO.lerReuniao(id);
+      if (!reuniao) return json(res, 404, { error: 'reunião não encontrada' });
+
+      if (acao === 'audio' && req.method === 'PUT') {
+        if (reuniao.status !== 'aguardando_audio') return json(res, 409, { error: 'esta reunião já recebeu conteúdo' });
+        if (!PACTO.sttConfigurado()) return json(res, 503, { error: `Transcrição não configurada: defina a chave de ${PACTO.provedorSTT()} no .env` });
+        try {
+          const audio = await PACTO.salvarAudio(req, id);
+          PACTO.processar(id, { audio, apiKey: API_KEY });                    // segundo plano
+          return json(res, 200, { ok: true, bytes: audio.bytes });
+        } catch (e) { return json(res, 400, { error: e.message }); }
+      }
+
+      if (acao === 'relatorio' && req.method === 'GET') {
+        if (reuniao.status !== 'pronto') return json(res, 409, { error: 'relatório ainda não está pronto' });
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        return res.end(PACTO.relatorioHTML(reuniao));
+      }
+
+      if (acao === 'enviar' && req.method === 'POST') {
+        if (reuniao.status !== 'pronto') return json(res, 409, { error: 'relatório ainda não está pronto' });
+        const { canal, destino = '', confirmar = false } = JSON.parse(await readBody(req) || '{}');
+        /* Dial de autonomia: enviar ao PRÓPRIO operador é nível 4 (reversível,
+           ninguém de fora vê). Enviar a terceiros é nível 5 — exige confirmação
+           explícita vinda da interface, nunca é o padrão. */
+        try {
+          if (canal === 'email') {
+            const proprio = await gmailProprioEndereco();
+            const para = String(destino).trim() || proprio;
+            if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(para)) return json(res, 400, { error: 'endereço de email inválido' });
+            const externo = para.toLowerCase() !== proprio.toLowerCase();
+            if (externo && confirmar !== true) return json(res, 428, { error: 'Envio a terceiros é nível 5: confirme explicitamente.', nivel: 5 });
+            /* ao próprio operador vai o diagnóstico completo; a terceiros, só a ata
+               (o diagnóstico é a estratégia dele — BATNA, limite de concessão) */
+            await gmailEnviar(externo
+              ? { to: para, subject: `Ata · ${reuniao.contexto.titulo}`, html: PACTO.ataHTML(reuniao), text: PACTO.ataTexto(reuniao) }
+              : { to: para, subject: `PACTO · ${reuniao.contexto.titulo}`, html: PACTO.relatorioHTML(reuniao), text: PACTO.relatorioTexto(reuniao) });
+            PACTO.registrarEntrega(id, { canal, destino: para, nivel: externo ? 5 : 4 });
+            return json(res, 200, { ok: true, destino: para, nivel: externo ? 5 : 4 });
+          }
+          if (canal === 'whatsapp') {
+            const wa = await getWA();
+            const st = wa.getState();
+            if (!st.connected) return json(res, 503, { error: 'WhatsApp não conectado — conecte pela tela do WhatsApp do ELION-X' });
+            const para = String(destino).trim() || st.me;
+            if (!para) return json(res, 400, { error: 'informe o destino do WhatsApp' });
+            const externo = para.replace(/\D/g, '') !== String(st.me || '').replace(/\D/g, '');
+            if (externo && confirmar !== true) return json(res, 428, { error: 'Envio a terceiros é nível 5: confirme explicitamente.', nivel: 5 });
+            const enviadoPara = await wa.sendMessage(para, externo ? PACTO.ataTexto(reuniao) : PACTO.relatorioTexto(reuniao));
+            PACTO.registrarEntrega(id, { canal, destino: enviadoPara, nivel: externo ? 5 : 4 });
+            return json(res, 200, { ok: true, destino: enviadoPara, nivel: externo ? 5 : 4 });
+          }
+          return json(res, 400, { error: 'canal deve ser "email" ou "whatsapp"' });
+        } catch (e) { return json(res, 502, { error: e.message }); }
+      }
+
+      if (!acao && req.method === 'GET') return json(res, 200, reuniao);
+      if (!acao && req.method === 'DELETE') { PACTO.apagarReuniao(id); return json(res, 200, { ok: true }); }
+      return json(res, 405, { error: 'método não suportado' });
     }
 
     // ── API de email (frontend) ──
