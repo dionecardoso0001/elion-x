@@ -6,18 +6,20 @@
    - Primeiro quadro na hora; depois quadros espaçados (prévia grosseira) e
      por fim todos — se a rolagem chegar antes, usa o quadro carregado mais perto.
    - Só trabalha quando a seção está visível e só redesenha se o quadro mudou.
-   - Sem JS ou com movimento reduzido: fica o <video> comum com controles. */
+   - Sempre em tela cheia (cover), sem controles de vídeo: quem conduz é a rolagem.
+   - Com "reduzir movimento" no sistema, o efeito continua (o movimento só acontece
+     quando a própria pessoa rola), mas sem a inércia de suavização.
+   - Sem JS: fica o primeiro quadro em tela cheia. */
 (() => {
   const root = document.getElementById('intro');
   if (!root) return;
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return; // mantém o vídeo comum
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const base = root.dataset.frames;
   const count = Number(root.dataset.count) || 0;
   const fg = root.querySelector('.intro-fg');
-  const bg = root.querySelector('.intro-bg');
   const fctx = fg.getContext('2d');
-  const bctx = bg.getContext('2d');
+  const poster = root.querySelector('.intro-poster');
   const caps = [...root.querySelectorAll('.intro-cap')].map(el => ({ el, from: +el.dataset.from, to: +el.dataset.to }));
   const bar = root.querySelector('.intro-progress i');
   const hint = root.querySelector('.intro-hint');
@@ -63,8 +65,6 @@
     W = root.querySelector('.intro-stage').clientWidth;
     H = root.querySelector('.intro-stage').clientHeight;
     fg.width = Math.round(W * dpr); fg.height = Math.round(H * dpr);
-    // Fundo desfocado em baixa resolução: o blur do CSS (GPU) faz o resto, sem custo por quadro.
-    bg.width = 72; bg.height = Math.max(1, Math.round(72 * H / W));
     requestDraw(true);
   }
 
@@ -72,18 +72,18 @@
     const img = frames[i];
     if (!img || !img.naturalWidth) return;
     const iw = img.naturalWidth, ih = img.naturalHeight;
-    // Retrato (celular): cobre a tela. Paisagem: altura total, centralizado, e o fundo desfocado preenche as laterais.
-    const portrait = W / H < 0.8;
-    const scale = portrait ? Math.max(W / iw, H / ih) : H / ih;
+    // Tela cheia (cover) em qualquer tela. O que sobra é cortado mantendo o ponto
+    // focal um pouco acima do centro, onde ficam o rosto e o cérebro do logo.
+    const scale = Math.max(W / iw, H / ih);
     const dw = iw * scale * dpr, dh = ih * scale * dpr;
-    fctx.clearRect(0, 0, fg.width, fg.height);
     fctx.imageSmoothingQuality = 'high';
-    fctx.drawImage(img, (fg.width - dw) / 2, (fg.height - dh) / 2, dw, dh);
-    const bs = Math.max(bg.width / iw, bg.height / ih);
-    bctx.drawImage(img, (bg.width - iw * bs) / 2, (bg.height - ih * bs) / 2, iw * bs, ih * bs);
+    fctx.drawImage(img, (fg.width - dw) * 0.5, (fg.height - dh) * focusFor(i / (count - 1)), dw, dh);
+    if (poster && !poster.hidden) poster.hidden = true;
   }
 
   /* ── rolagem → progresso (com leve inércia) ── */
+  // Ponto focal vertical do corte: centro-alto no logo/robô; sobe no fim para enquadrar o rosto inteiro.
+  const focusFor = p => 0.42 - 0.2 * Math.min(1, Math.max(0, (p - 0.74) / 0.14));
   let target = 0, current = 0, shown = -1, raf = 0, visible = true, force = false;
 
   function readScroll() {
@@ -96,7 +96,7 @@
 
   function tick() {
     raf = 0;
-    current += (target - current) * 0.22;
+    current = reduced ? target : current + (target - current) * 0.22;
     if (Math.abs(target - current) < 0.0005) current = target;
     const idx = nearestLoaded(Math.round(current * (count - 1)));
     if (idx >= 0 && (idx !== shown || force)) { draw(idx); shown = idx; force = false; }
