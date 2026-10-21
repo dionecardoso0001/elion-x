@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Advanced Tech TI Studio — propaganda em vídeo e foto feita por IA</title>
+  <meta name="description" content="Encomende vídeos e fotos de propaganda produzidos por inteligência artificial. Monte o briefing, pague online e receba o material pronto.">
+  <meta name="theme-color" content="#040714">
+  <meta property="og:title" content="Advanced Tech TI Studio">
+  <meta property="og:description" content="Sua marca em um comercial de cinema. Feito por IA, entregue pronto.">
+  <meta property="og:image" content="/assets/logo-full.webp">
+  <link rel="icon" href="/assets/favicon.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Sora:wght@400;600;700&display=swap">
+  <link rel="preload" as="image" href="/assets/logo-head.webp">
+  <link rel="stylesheet" href="/css/studio.css">
+  <script src="/js/common.js" defer></script>
+  <script src="/js/neural.js" defer></script>
+  <script src="/js/app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Pular para o conteúdo</a>
+
+<header class="header">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Advanced Tech TI Studio — início">
+      <img src="/assets/logo-head.webp" alt="" width="38" height="48">
+      <span><b>ADVANCED TECH TI</b><small>Studio IA</small></span>
+    </a>
+    <nav class="nav" aria-label="Seções">
+      <a href="#como-funciona">Como funciona</a>
+      <a href="#pacotes">Pacotes</a>
+      <a href="#estudio">Estúdio</a>
+      <a href="#faq">Dúvidas</a>
+    </nav>
+    <a class="btn btn-primary btn-sm magnetic" href="#estudio">Criar meu vídeo</a>
+  </div>
+</header>
+
+<main id="main">
+  <!-- HERO -->
+  <section class="hero" aria-labelledby="hero-title">
+    <canvas id="neural" aria-hidden="true"></canvas>
+    <div class="wrap">
+      <div>
+        <span class="eyebrow"><span class="dot"></span>Estúdio de propaganda com IA · bots Grok</span>
+        <h1 id="hero-title">Sua marca em um <span class="grad-text">comercial de cinema.</span><br>Feito por IA, entregue pronto.</h1>
+        <p class="lead">Conte o que você quer divulgar — um produto, seu trabalho, um evento. Nossos bots de IA roteirizam, produzem e entregam o vídeo ou as fotos direto na sua página do pedido.</p>
+        <div class="ctas">
+          <a class="btn btn-primary magnetic" href="#estudio">Montar meu anúncio <span aria-hidden="true">→</span></a>
+          <a class="btn magnetic" href="#pacotes">Ver pacotes e preços</a>
+        </div>
+        <ul class="facts" id="facts" aria-label="Destaques">
+          <li><b data-fact="from">—</b><span>a partir de</span></li>
+          <li><b data-fact="sla">—</b><span>entrega mais rápida</span></li>
+          <li><b>3</b><span>formatos: 9:16 · 1:1 · 16:9</span></li>
+        </ul>
+      </div>
+
+      <div class="stage" id="stage" aria-hidden="true">
+        <div class="ring r3"></div>
+        <div class="ring"></div>
+        <div class="ring r2"></div>
+        <div class="halo"></div>
+        <img class="head" src="/assets/logo-head.webp" alt="" width="406" height="520" fetchpriority="high">
+        <div class="chip-float c1"><i>▶</i>Reels 9:16 renderizando…</div>
+        <div class="chip-float c2"><i>✦</i>Roteiro gerado pela IA</div>
+        <div class="chip-float c3"><i>◉</i>6 fotos de produto</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="marquee" aria-hidden="true">
+    <div class="marquee-track">
+      <span>Lançamento de produto</span><span>Autopromoção</span><span>Loja online</span><span>Restaurante & delivery</span><span>Imobiliária</span><span>Evento</span><span>Marca pessoal</span><span>Infoproduto</span>
+      <span>Lançamento de produto</span><span>Autopromoção</span><span>Loja online</span><span>Restaurante & delivery</span><span>Imobiliária</span><span>Evento</span><span>Marca pessoal</span><span>Infoproduto</span>
+    </div>
+  </div>
+
+  <!-- COMO FUNCIONA -->
+  <section class="section" id="como-funciona" aria-labelledby="cf-title">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow">Como funciona</span>
+        <h2 id="cf-title">Do briefing ao vídeo pronto em 4 passos</h2>
+        <p>Sem câmera, sem estúdio e sem reunião. Você descreve, a IA produz e você baixa.</p>
+      </div>
+      <div class="steps">
+        <article class="card reveal"><h3>Monte o briefing</h3><p>Escolha objetivo, estilo e formato. O preview ao lado mostra a cara do seu anúncio em tempo real.</p></article>
+        <article class="card reveal"><h3>Pague online</h3><p>Checkout seguro. O pedido só entra em produção quando o pagamento é confirmado pelo provedor.</p></article>
+        <article class="card reveal"><h3>Os bots Grok produzem</h3><p>Seu briefing vai direto para os nossos bots de IA, que roteirizam, geram e finalizam o material.</p></article>
+        <article class="card reveal"><h3>Receba e ajuste</h3><p>Baixe na página do pedido. Precisa mudar algo? Peça um ajuste dentro das rodadas do pacote.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <!-- PACOTES -->
+  <section class="section" id="pacotes" aria-labelledby="pk-title">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow">Pacotes</span>
+        <h2 id="pk-title">Escolha o tamanho da sua <span class="grad-text">propaganda</span></h2>
+        <p>Preço fechado, sem surpresa. O valor final é calculado no servidor e mostrado antes do pagamento.</p>
+      </div>
+      <div class="packages" id="packages" aria-live="polite">
+        <div class="card skeleton"></div><div class="card skeleton"></div><div class="card skeleton"></div><div class="card skeleton"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ESTÚDIO INTERATIVO -->
+  <section class="section" id="estudio" aria-labelledby="st-title">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow"><span class="dot"></span>Estúdio interativo</span>
+        <h2 id="st-title">Monte seu anúncio e <span class="grad-text">veja ao vivo</span></h2>
+        <p>Cada escolha muda o preview. Quando estiver do seu jeito, é só pagar e acompanhar a produção.</p>
+      </div>
+
+      <div class="studio">
+        <form class="card" id="wizard" novalidate>
+          <div class="progress" role="list" id="progress"></div>
+
+          <!-- 1 objetivo -->
+          <fieldset class="step active" data-step="0">
+            <legend><h3>1 · Qual é o objetivo?</h3></legend>
+            <p>Isso define o tom do roteiro e a chamada final.</p>
+            <div class="choices" id="goals"></div>
+          </fieldset>
+
+          <!-- 2 pacote -->
+          <fieldset class="step" data-step="1">
+            <legend><h3>2 · Escolha o pacote</h3></legend>
+            <p>Você pode somar adicionais. O total aparece no resumo.</p>
+            <div class="choices" id="pkg-choices"></div>
+            <div class="addons" id="addons"></div>
+          </fieldset>
+
+          <!-- 3 estilo e formato -->
+          <fieldset class="step" data-step="2">
+            <legend><h3>3 · Estilo e formato</h3></legend>
+            <p>Teste à vontade — o preview muda na hora.</p>
+            <div class="choices" id="styles"></div>
+            <h3 class="mt">Formato</h3>
+            <div class="choices" id="formats"></div>
+          </fieldset>
+
+          <!-- 4 briefing -->
+          <fieldset class="step" data-step="3">
+            <legend><h3>4 · Conte sobre o que vamos divulgar</h3></legend>
+            <div class="row-2">
+              <div class="field"><label for="brand">Marca ou seu nome</label><input id="brand" name="brand" maxlength="80" autocomplete="organization" required><span class="err" data-err="brand"></span></div>
+              <div class="field"><label for="product">Produto, serviço ou tema</label><input id="product" name="product" maxlength="120" required><span class="err" data-err="product"></span></div>
+            </div>
+            <div class="field"><label for="audience">Para quem é? <span class="hint">(opcional)</span></label><input id="audience" name="audience" maxlength="200" placeholder="Ex.: mulheres 25–40 que treinam em casa"></div>
+            <div class="field">
+              <label for="message">Mensagem principal</label>
+              <textarea id="message" name="message" maxlength="1500" required placeholder="O que a pessoa precisa entender ou sentir ao ver o anúncio? Diferenciais, oferta, tom de voz…"></textarea>
+              <span class="counter" id="msg-count">0/1500</span><span class="err" data-err="message"></span>
+            </div>
+            <div class="field"><label for="cta">Chamada final <span class="hint">(opcional)</span></label><input id="cta" name="cta" maxlength="80" placeholder="Ex.: Peça já pelo WhatsApp"></div>
+            <div class="field">
+              <label for="script">Roteiro <span class="hint">(opcional — escreva o seu ou peça ajuda à IA)</span></label>
+              <div class="assist"><button class="btn btn-sm" type="button" id="assist-btn">✦ Sugerir roteiro com IA</button><small id="assist-note"></small></div>
+              <textarea id="script" name="script" maxlength="2500"></textarea>
+            </div>
+            <div class="field"><label for="refs">Links de referência <span class="hint">(opcional, até 5, um por linha, https)</span></label><textarea id="refs" name="refs" class="short" placeholder="https://instagram.com/…"></textarea><span class="err" data-err="references"></span></div>
+          </fieldset>
+
+          <!-- 5 contato -->
+          <fieldset class="step" data-step="4">
+            <legend><h3>5 · Para quem entregamos?</h3></legend>
+            <div class="row-2">
+              <div class="field"><label for="name">Seu nome</label><input id="name" name="name" maxlength="100" autocomplete="name" required><span class="err" data-err="name"></span></div>
+              <div class="field"><label for="email">E-mail</label><input id="email" name="email" type="email" maxlength="254" autocomplete="email" required><span class="err" data-err="email"></span></div>
+            </div>
+            <div class="field"><label for="whatsapp">WhatsApp <span class="hint">(opcional)</span></label><input id="whatsapp" name="whatsapp" inputmode="tel" maxlength="20" autocomplete="tel"></div>
+            <label class="check"><input type="checkbox" id="terms"> <span>Li e aceito os termos de uso e a política de privacidade. Autorizo o uso dos dados acima apenas para produzir e entregar este pedido (LGPD).</span></label>
+            <span class="err" data-err="acceptTerms"></span>
+          </fieldset>
+
+          <p class="form-error" id="form-error" role="alert"></p>
+          <div class="wizard-nav">
+            <button class="btn" type="button" id="prev">← Voltar</button>
+            <button class="btn btn-primary magnetic" type="button" id="next">Continuar →</button>
+          </div>
+        </form>
+
+        <aside class="preview-col" aria-label="Pré-visualização e resumo">
+          <div class="screen-wrap">
+            <div class="screen" id="screen" data-format="9:16" data-style="futurista" role="img" aria-label="Pré-visualização ilustrativa do anúncio">
+              <div class="bg"></div>
+              <div class="scene">
+                <span class="p-brand" id="pv-brand">SUA MARCA</span>
+                <span class="p-product" id="pv-product">Seu produto em destaque</span>
+                <span class="p-msg" id="pv-msg">Sua mensagem aparece aqui enquanto você digita.</span>
+                <span class="p-cta" id="pv-cta">Saiba mais</span>
+              </div>
+              <span class="p-rec">PREVIEW</span>
+              <span class="p-bar"></span>
+            </div>
+          </div>
+          <p class="preview-note">Prévia ilustrativa de layout — o material final é produzido pela IA a partir do seu briefing.</p>
+          <div class="card summary" aria-live="polite">
+            <h4>Resumo do pedido</h4>
+            <dl id="sum-lines"><dt>Pacote</dt><dd>—</dd></dl>
+            <div class="total"><span>Total</span><b id="sum-total">—</b></div>
+            <p class="sla" id="sum-sla"></p>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section" id="faq" aria-labelledby="faq-title">
+    <div class="wrap">
+      <div class="section-head reveal"><span class="eyebrow">Dúvidas</span><h2 id="faq-title">Perguntas frequentes</h2></div>
+      <div class="faq">
+        <details class="reveal"><summary>Como recebo o vídeo ou as fotos?</summary><p>Depois do pagamento você recebe o link da página do seu pedido. Lá você acompanha cada etapa da produção e baixa os arquivos assim que ficam prontos. Guarde esse link: ele é a sua chave de acesso.</p></details>
+        <details class="reveal"><summary>Quem produz o material?</summary><p>Bots de IA baseados no Grok, operados pela Advanced Tech TI. Eles recebem seu briefing assim que o pagamento é confirmado e devolvem o material finalizado.</p></details>
+        <details class="reveal"><summary>E se eu não gostar do resultado?</summary><p>Cada pacote inclui rodadas de ajuste. Na página do pedido, descreva o que mudar e o pedido volta para a produção.</p></details>
+        <details class="reveal"><summary>Posso usar o material em anúncios pagos?</summary><p>Sim, o material é entregue para uso comercial da sua marca. Evite pedir uso de marcas, músicas ou rostos de terceiros sem autorização — pedidos assim podem ser recusados.</p></details>
+        <details class="reveal"><summary>Meus dados estão seguros?</summary><p>Usamos seus dados apenas para produzir e entregar o pedido. O pagamento é processado pelo provedor de pagamento; nós não armazenamos dados de cartão.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section class="section pt0">
+    <div class="wrap">
+      <div class="cta-band reveal">
+        <h2>Pronto para aparecer?</h2>
+        <p>Monte seu briefing em poucos minutos e deixe a IA fazer o resto.</p>
+        <a class="btn btn-primary magnetic" href="#estudio">Começar agora</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <img src="/assets/logo-full.webp" alt="Advanced Tech TI" width="160" height="145" loading="lazy">
+    <p class="m0">© <span id="year"></span> Advanced Tech TI · Studio IA</p>
+    <a href="/pedido.html">Acompanhar pedido</a>
+  </div>
+</footer>
+</body>
+</html>

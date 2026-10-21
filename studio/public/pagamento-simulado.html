@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Pagamento simulado — Advanced Tech TI Studio</title>
+  <link rel="icon" href="/assets/favicon.png" type="image/png">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Sora:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="/css/studio.css">
+  <script src="/js/common.js" defer></script>
+  <script src="/js/mock-pay.js" defer></script>
+</head>
+<body>
+<main class="wrap">
+  <section class="card mock-card">
+    <img src="/assets/logo-head.webp" alt="" width="90" height="115" class="mock-logo">
+    <span class="eyebrow">Ambiente de desenvolvimento</span>
+    <h1 class="h-lg">Pagamento simulado</h1>
+    <p class="muted">Este checkout só existe com <code>PAYMENT_PROVIDER=mock</code> e é bloqueado em produção. Nenhuma cobrança real acontece.</p>
+    <p>Pedido <b id="m-id">—</b></p>
+    <button class="btn btn-primary" type="button" id="m-pay">Simular pagamento aprovado</button>
+    <p class="form-error" id="m-error" role="alert"></p>
+  </section>
+</main>
+</body>
+</html>

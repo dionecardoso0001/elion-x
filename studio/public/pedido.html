@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex">
+  <title>Meu pedido — Advanced Tech TI Studio</title>
+  <meta name="theme-color" content="#040714">
+  <link rel="icon" href="/assets/favicon.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Sora:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="/css/studio.css">
+  <script src="/js/common.js" defer></script>
+  <script src="/js/pedido.js" defer></script>
+</head>
+<body>
+<header class="header">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/assets/logo-head.webp" alt="" width="38" height="48"><span><b>ADVANCED TECH TI</b><small>Studio IA</small></span></a>
+    <a class="btn btn-sm" href="/#estudio">Novo pedido</a>
+  </div>
+</header>
+
+<main class="order-shell" id="main">
+  <div class="wrap">
+    <!-- acesso manual (quando o link foi aberto em outro aparelho) -->
+    <section id="access" class="card" hidden>
+      <h1 class="h-md">Acompanhar pedido</h1>
+      <p class="muted">Cole aqui o link de acompanhamento que você recebeu ao fazer o pedido.</p>
+      <form id="access-form" class="row-2">
+        <div class="field"><label for="access-link">Link do pedido</label><input id="access-link" required placeholder="https://…/pedido.html?id=AT-…#t=…"></div>
+        <div class="field"><label>&nbsp;</label><button class="btn btn-primary" type="submit">Abrir pedido</button></div>
+      </form>
+      <p class="form-error" id="access-error" role="alert"></p>
+    </section>
+
+    <section id="order" hidden>
+      <div class="order-grid">
+        <div>
+          <span class="eyebrow">Pedido <b id="o-id"></b></span>
+          <h1 class="h-lg" id="o-title"></h1>
+          <span class="status-pill" id="o-status"></span>
+          <div class="meter" aria-hidden="true"><i id="o-meter"></i></div>
+          <p class="muted" id="o-progress-text"></p>
+
+          <div id="o-banner"></div>
+
+          <div id="o-pay" hidden class="notice warn">
+            <p class="m0">Ainda não recebemos a confirmação do pagamento. Se você acabou de pagar, aguarde alguns segundos — esta página atualiza sozinha.</p>
+          </div>
+
+          <h2 class="h-md mt">Seus arquivos</h2>
+          <div id="o-assets"></div>
+
+          <section id="o-revision" class="card mt" hidden>
+            <h2 class="h-md">Pedir um ajuste</h2>
+            <p class="muted">Restam <b id="o-rev-left"></b> rodada(s). Seja específico: o que mudar, onde e como.</p>
+            <form id="rev-form">
+              <div class="field"><label for="rev-note">O que você quer ajustar?</label><textarea id="rev-note" maxlength="1000" required></textarea></div>
+              <button class="btn btn-primary" type="submit">Enviar ajuste</button>
+              <p class="form-error" id="rev-error" role="alert"></p>
+            </form>
+          </section>
+        </div>
+
+        <aside class="card">
+          <h2 class="h-md">Linha do tempo</h2>
+          <ol class="timeline" id="o-timeline"></ol>
+          <hr class="sep">
+          <dl class="kv" id="o-meta"></dl>
+          <div class="notice mt">
+            <p class="m0"><b>Guarde este link.</b> Ele é a chave de acesso ao seu pedido — não compartilhe publicamente.</p>
+            <button class="btn btn-sm mt" type="button" id="copy-link">Copiar link de acompanhamento</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+  </div>
+</main>
+</body>
+</html>

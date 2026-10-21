@@ -1,0 +1,19 @@
+{
+  "name": "advanced-tech-ti-studio",
+  "version": "1.0.0",
+  "description": "Advanced Tech TI Studio — plataforma de venda de vídeos e fotos de propaganda produzidos por IA, integrada a bots Grok",
+  "private": true,
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs",
+    "bot:exemplo": "node scripts/bot-exemplo.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "MIT",
+  "author": "Dione Cardoso"
+}
