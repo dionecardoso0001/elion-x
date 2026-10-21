@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <meta name="referrer" content="no-referrer">
-  <title>Painel — Advanced Tech TI Studio</title>
+  <title>Painel do estúdio — Advanced Tech TI</title>
   <link rel="icon" href="/assets/favicon.png" type="image/png">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Sora:wght@400;600;700&display=swap">
   <link rel="stylesheet" href="/css/studio.css">
@@ -16,22 +16,22 @@
 <header class="header">
   <div class="wrap">
     <a class="brand" href="/"><img src="/assets/logo-head.webp" alt="" width="38" height="48"><span><b>ADVANCED TECH TI</b><small>Painel do estúdio</small></span></a>
+    <button class="btn btn-sm" type="button" id="logout" hidden>Sair</button>
   </div>
 </header>
 <main class="order-shell">
   <div class="wrap">
-    <form class="toolbar" id="login">
-      <div class="field m0"><label for="tok">Token de administrador</label><input id="tok" type="password" autocomplete="off" required></div>
+    <form class="card toolbar" id="login">
+      <div class="field m0 grow"><label for="tok">Token de administrador</label><input id="tok" type="password" autocomplete="current-password" required></div>
       <button class="btn btn-primary" type="submit">Entrar</button>
-      <button class="btn" type="button" id="reload">Atualizar</button>
     </form>
-    <p class="form-error" id="err" role="alert"></p>
-    <div class="table-wrap card">
-      <table class="table">
-        <thead><tr><th>Pedido</th><th>Cliente</th><th>Pacote</th><th>Status</th><th>Bot</th><th>Ações</th></tr></thead>
-        <tbody id="rows"><tr><td colspan="6" class="muted">Entre com o token para ver os pedidos.</td></tr></tbody>
-      </table>
-    </div>
+
+    <section id="panel" hidden>
+      <div class="kpis" id="kpis" aria-live="polite"></div>
+      <div class="filters" role="group" aria-label="Filtrar pedidos" id="filters"></div>
+      <p class="form-error" id="err" role="alert"></p>
+      <div id="orders" class="admin-list"></div>
+    </section>
   </div>
 </main>
 </body>

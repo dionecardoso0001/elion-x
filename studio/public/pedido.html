@@ -12,6 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Sora:wght@400;600;700&display=swap">
   <link rel="stylesheet" href="/css/studio.css">
+  <script src="/vendor/qrcode-1.4.4.js" defer></script>
   <script src="/js/common.js" defer></script>
   <script src="/js/pedido.js" defer></script>
 </head>
@@ -25,31 +26,64 @@
 
 <main class="order-shell" id="main">
   <div class="wrap">
-    <!-- acesso manual (quando o link foi aberto em outro aparelho) -->
     <section id="access" class="card" hidden>
       <h1 class="h-md">Acompanhar pedido</h1>
-      <p class="muted">Cole aqui o link de acompanhamento que você recebeu ao fazer o pedido.</p>
-      <form id="access-form" class="row-2">
-        <div class="field"><label for="access-link">Link do pedido</label><input id="access-link" required placeholder="https://…/pedido.html?id=AT-…#t=…"></div>
-        <div class="field"><label>&nbsp;</label><button class="btn btn-primary" type="submit">Abrir pedido</button></div>
+      <p class="muted">Cole aqui o link de acompanhamento do seu pedido.</p>
+      <form id="access-form" class="access-form">
+        <div class="field m0"><label for="access-link">Link do pedido</label><input id="access-link" required placeholder="https://…/pedido.html?id=AT-…#t=…"></div>
+        <button class="btn btn-primary" type="submit">Abrir pedido</button>
       </form>
       <p class="form-error" id="access-error" role="alert"></p>
     </section>
 
     <section id="order" hidden>
       <div class="order-grid">
-        <div>
+        <div class="order-main">
           <span class="eyebrow">Pedido <b id="o-id"></b></span>
           <h1 class="h-lg" id="o-title"></h1>
           <span class="status-pill" id="o-status"></span>
           <div class="meter" aria-hidden="true"><i id="o-meter"></i></div>
           <p class="muted" id="o-progress-text"></p>
-
           <div id="o-banner"></div>
 
-          <div id="o-pay" hidden class="notice warn">
-            <p class="m0">Ainda não recebemos a confirmação do pagamento. Se você acabou de pagar, aguarde alguns segundos — esta página atualiza sozinha.</p>
-          </div>
+          <!-- PIX -->
+          <section class="card pix" id="o-pix" hidden aria-labelledby="pix-title">
+            <div class="pix-grid">
+              <div class="pix-qr"><img id="pix-qr" alt="QR Code Pix do pedido" width="232" height="232"></div>
+              <div class="pix-info">
+                <h2 class="h-md" id="pix-title">Pague com Pix</h2>
+                <p class="pix-amount" id="pix-amount"></p>
+                <ol class="pix-steps">
+                  <li>Abra o app do seu banco e escolha <b>Pix → Ler QR Code</b> ou <b>Pix Copia e Cola</b>.</li>
+                  <li>Confira o valor e o recebedor: <b id="pix-holder"></b>.</li>
+                  <li>Depois de pagar, toque em <b>Já fiz o Pix</b>.</li>
+                </ol>
+              </div>
+            </div>
+            <div class="field mt">
+              <label for="pix-code">Pix copia e cola</label>
+              <div class="copy-row"><input id="pix-code" readonly><button class="btn btn-sm" type="button" id="pix-copy">Copiar</button></div>
+            </div>
+            <p class="muted small">Chave Pix: <span id="pix-key" class="mono"></span> · Identificador: <span id="pix-txid" class="mono"></span></p>
+            <div id="pix-report">
+              <div class="field"><label for="payer">Nome de quem pagou <span class="hint">(ajuda a localizar o Pix no extrato)</span></label><input id="payer" maxlength="100" autocomplete="name"></div>
+              <button class="btn btn-primary" type="button" id="pix-done">Já fiz o Pix</button>
+            </div>
+            <p class="notice" id="pix-reported" hidden>Recebemos seu aviso. Assim que o valor aparecer na nossa conta, seu pedido entra em produção — esta página atualiza sozinha.</p>
+          </section>
+
+          <!-- FOTOS DO CLIENTE -->
+          <section class="mt" id="o-photos-box">
+            <h2 class="h-md">Fotos do seu produto</h2>
+            <ul class="thumbs" id="o-photos"></ul>
+            <div id="o-photo-upload" hidden>
+              <label class="dropzone small-dz" for="more-photos">
+                <input type="file" id="more-photos" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple>
+                <b>Adicionar fotos</b><small>até 8 no total · removemos a localização (GPS)</small>
+              </label>
+              <p class="form-error" id="photo-error" role="alert"></p>
+            </div>
+          </section>
 
           <h2 class="h-md mt">Seus arquivos</h2>
           <div id="o-assets"></div>
@@ -72,7 +106,7 @@
           <dl class="kv" id="o-meta"></dl>
           <div class="notice mt">
             <p class="m0"><b>Guarde este link.</b> Ele é a chave de acesso ao seu pedido — não compartilhe publicamente.</p>
-            <button class="btn btn-sm mt" type="button" id="copy-link">Copiar link de acompanhamento</button>
+            <button class="btn btn-sm mt" type="button" id="copy-link">Copiar link do pedido</button>
           </div>
         </aside>
       </div>

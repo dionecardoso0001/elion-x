@@ -1,126 +1,91 @@
 # Advanced Tech TI · Studio IA
 
-Plataforma de venda de **vídeos e fotos de propaganda produzidos por IA**. O cliente monta o briefing num estúdio interativo, paga online e recebe o material pronto numa página de acompanhamento. A produção é feita pelos **bots Grok** do operador.
+Plataforma de venda de **vídeos e fotos de propaganda produzidos com IA**. O cliente escolhe o estilo numa galeria explicada, envia o briefing e as fotos do produto, paga por **Pix** e baixa o material pronto na página do pedido. **A produção é sua**, com as suas IAs; a plataforma cuida da venda, do pagamento, da organização e da entrega.
 
 ```
-briefing (estúdio interativo) → orçamento calculado no servidor → pedido + checkout
-→ webhook assinado do pagamento → despacho assinado ao bot Grok
-→ callbacks assinados (progresso / entrega) → download na página do pedido → ajustes
+galeria de estilos → pacote → briefing + fotos do produto → Pix (QR + copia-e-cola com valor)
+→ cliente toca "Já fiz o Pix" → você confere o extrato e confirma no painel
+→ produz com suas IAs → envia os arquivos pelo painel → entrega → link pelo WhatsApp → ajustes
 ```
 
-Node.js puro (≥ 20), **zero dependências**, no mesmo padrão do ELION-X.
+Node.js puro (≥ 20), **zero dependências de servidor**. Única biblioteca de navegador: `qrcode-generator` 1.4.4 (MIT), servida localmente em `public/vendor/`.
 
 ## Como rodar
 
 ```bash
 cd studio
-cp .env.example .env          # preencha BOT_SHARED_SECRET e ADMIN_TOKEN
-npm start                     # http://localhost:3333
-npm run bot:exemplo           # (outro terminal) bot de referência em :4444
-npm test                      # testes ponta a ponta
+cp .env.example .env     # preencha PIX_KEY, PIX_NAME, PIX_CITY e ADMIN_TOKEN
+npm start                # http://localhost:3333
+npm test                 # testes ponta a ponta
 ```
 
-Com `PAYMENT_PROVIDER=mock`, o checkout é simulado e dá para testar o fluxo inteiro sem cobrança. O servidor **se recusa a iniciar** com `mock` em `NODE_ENV=production`.
+| Página | Para quem | Para quê |
+|---|---|---|
+| `/` | Cliente | Galeria de estilos, pacotes e pedido (com envio de fotos) |
+| `/pedido.html?id=…#t=…` | Cliente | Pix, fotos, acompanhamento, download e ajustes |
+| `/admin.html` | Você | Confirmar Pix, conduzir a produção, enviar arquivos, avisar o cliente |
 
-| Página | Para quê |
-|---|---|
-| `/` | Landing + estúdio interativo com preview ao vivo |
-| `/pedido.html?id=…#t=…` | Acompanhamento, download e pedido de ajuste |
-| `/admin.html` | Painel do operador (token `ADMIN_TOKEN`) |
+## Rotina do operador (painel)
+
+1. **Pedido novo** aparece em "Aguardando Pix". Quando o cliente toca "Já fiz o Pix", o pedido vai para **"Precisa de ação"**, com o nome do pagador e o identificador.
+2. **Abra o app do banco e confira o crédito.** Só então toque em **Confirmar Pix recebido**. Nunca confirme por comprovante enviado pelo cliente: comprovante falso é a fraude mais comum em Pix manual.
+3. **Detalhes → Copiar briefing (para suas IAs)** e baixe as fotos do cliente. Toque em **Iniciar produção** (a mensagem opcional aparece para o cliente).
+4. Produza nas suas plataformas de IA. Em **Detalhes**, envie os arquivos prontos (MP4, MOV, WEBM, JPG, PNG, WEBP, ZIP ou PDF, até `MAX_DELIVERY_MB`).
+5. **Entregar ao cliente** libera o download e abre a mensagem pronta para o **WhatsApp** com o link do pedido.
+6. Se o cliente pedir **ajuste**, o pedido volta para "Precisa de ação" com a nota dele.
+
+Pedidos sem pagamento nem aviso são cancelados após `UNPAID_EXPIRY_HOURS` (padrão 72 h). Com `NOTIFY_WEBHOOK_URL`, você recebe um POST a cada pedido novo, aviso de Pix e pedido de ajuste (para ligar num bot seu de Telegram/WhatsApp).
+
+## Galeria de estilos
+
+Definida em `lib/styles.mjs`: **7 estilos de imagem** (still de estúdio, editorial de luxo, lifestyle, flat lay, pop colorido, futurista/neon, retrato profissional) e **6 de vídeo** (comercial cinematográfico, reels dinâmico, produto 360°/macro, motion graphics, apresentador virtual, estilo UGC). Cada um tem: o que é, para que serve, ideal para quem e o que o cliente precisa enviar. Pacotes com vídeo **e** imagens exigem um estilo de cada. As miniaturas são ilustrações animadas em CSS, sinalizadas como tal, e não trabalhos de clientes: quando tiver trabalhos reais autorizados, substitua por eles.
 
 ## Arquitetura
 
 | Arquivo | Responsabilidade |
 |---|---|
-| `server.mjs` | HTTP, rotas, cabeçalhos de segurança, limitação de taxa, fila de despacho |
+| `server.mjs` | HTTP, rotas, cabeçalhos de segurança, limitação de taxa, painel, uploads |
 | `lib/catalog.mjs` | Pacotes, adicionais e **cálculo de preço** (única fonte de verdade) |
+| `lib/styles.mjs` | Galeria de estilos e categorias |
 | `lib/validate.mjs` | Validação por lista branca de todo dado de entrada |
-| `lib/payments.mjs` | Provedores `mock` e `stripe` (Checkout + verificação do webhook) |
-| `lib/grok.mjs` | Despacho aos bots e assistente de roteiro via API xAI |
+| `lib/pix.mjs` | Payload Pix copia-e-cola (BR Code EMV + CRC16, validado contra o exemplo do Banco Central) |
+| `lib/payments.mjs` | Provedores `pix` (manual), `stripe` (webhook) e `mock` (desenvolvimento) |
+| `lib/files.mjs` | Upload em streaming, tipo pelos bytes, remoção de EXIF, URLs assinadas, Range |
 | `lib/store.mjs` | Persistência em JSON com escrita atômica e fila serializada |
-| `lib/crypto.mjs` | Tokens, HMAC, comparação em tempo constante |
-| `scripts/bot-exemplo.mjs` | Implementação de referência do contrato dos bots |
+| `lib/grok.mjs` | Automação opcional com bots e assistente de roteiro via API xAI |
 
-**Estados do pedido:** `awaiting_payment → paid → in_production → delivered`, com `revision_requested` (ajuste) e `failed`.
-
-## Contrato dos bots Grok
-
-### 1. A plataforma chama o bot (pedido pago ou ajuste)
-
-`POST` em `GROK_BOT_URL_VIDEO` / `GROK_BOT_URL_PHOTO` / `GROK_BOT_URL`:
-
-```http
-Content-Type: application/json
-X-Studio-Event: order.paid | order.revision
-X-Studio-Timestamp: 1761062400
-X-Studio-Signature: sha256=<hex HMAC-SHA256(BOT_SHARED_SECRET, "<timestamp>.<corpo bruto>")>
-Idempotency-Key: AT-XXXXXXXX:order.paid:0
-```
-
-```json
-{
-  "event": "order.paid",
-  "order": {
-    "id": "AT-7K2Q9M4P",
-    "package": { "id": "comercial-pro", "name": "Comercial Pro", "kind": "video", "durationSec": 30 },
-    "deliverables": { "videos": 1, "images": 2 },
-    "addons": ["urgente"], "slaHours": 36, "dueAt": "2026-10-23T04:00:00.000Z",
-    "briefing": { "goal": "vender-produto", "style": "divertido", "format": "9:16", "brand": "…", "product": "…",
-                  "audience": "…", "message": "…", "cta": "…", "script": "…", "references": ["https://…"] },
-    "customerFirstName": "Ana"
-  },
-  "callbackUrl": "https://seu-dominio/api/bots/callback"
-}
-```
-
-Em ajustes, o corpo também traz `"revisionNote"`. O bot deve **verificar a assinatura**, responder `2xx` em até 15 s e produzir de forma assíncrona. Sem `2xx`, a plataforma tenta de novo com espera exponencial (30 s → 30 min, 8 tentativas); o painel permite reenviar à mão. O bot **não** recebe e-mail, telefone nem token de acesso do cliente.
-
-### 2. O bot devolve progresso e entrega
-
-`POST {callbackUrl}`, assinado do mesmo jeito:
-
-```json
-{ "orderId": "AT-7K2Q9M4P", "status": "in_production", "progress": 60, "message": "Gerando cenas" }
-```
-```json
-{ "orderId": "AT-7K2Q9M4P", "status": "delivered", "message": "Material pronto!",
-  "assets": [ { "type": "video", "url": "https://cdn…/final.mp4", "thumbnail": "https://cdn…/capa.jpg", "label": "Vídeo 9:16" },
-              { "type": "image", "url": "https://cdn…/foto1.jpg", "label": "Capa 1" } ] }
-```
-```json
-{ "orderId": "AT-7K2Q9M4P", "status": "failed", "message": "Motivo curto" }
-```
-
-Regras: só `https`; com `DELIVERY_ALLOWED_HOSTS` definido, só esses hosts; janela de 5 min no timestamp; callback repetido é descartado. Os arquivos ficam no armazenamento do bot (CDN/bucket) — a plataforma guarda só as URLs.
+**Estados do pedido:** `awaiting_payment → payment_reported → paid → in_production → delivered`, com `revision_requested`, `failed` e `canceled`.
 
 ## Segurança — o que está tratado
 
-- **Preço só no servidor**: o total é recalculado a partir dos ids; valor enviado pelo navegador é ignorado. O webhook Stripe confere `amount_total` com o pedido.
-- **Pagamento só por webhook assinado** (Stripe `t=…,v1=…`, tolerância de 5 min), nunca pelo redirecionamento do navegador. Idempotente.
-- **Acesso ao pedido (BOLA/IDOR)**: token aleatório de 256 bits, guardado só como hash SHA-256, comparado em tempo constante. "Não existe" e "token errado" respondem igual (404). O token viaja no **fragmento** da URL (`#t=`), que não vai para o servidor nem para o `Referer`.
-- **Bots**: HMAC-SHA256 nos dois sentidos, anti-replay, `redirect: 'error'` no despacho, validação de URLs entregues (bloqueia `javascript:`, `http:` e credenciais na URL).
-- **SSRF**: links de referência do cliente nunca são buscados pelo servidor.
-- **XSS**: CSP `script-src 'self'` sem `unsafe-inline`; o frontend só usa `textContent`/atributos, nunca `innerHTML`.
-- **Injeção de prompt** no assistente: briefing delimitado como dado, saída tratada como texto puro, sem ferramentas.
-- Cabeçalhos: CSP, HSTS (produção), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, COOP.
-- Limitação de taxa por IP/rota, limite de corpo, timeouts, bloqueio de path traversal, `PUBLIC_BASE_URL` fixo (nada derivado do cabeçalho `Host`).
-- Arquivo de dados gravado com permissão `0600`.
+- **Pagamento:** o cliente só *avisa* que pagou; quem marca como pago é você, no painel autenticado. Valor e identificador vêm do servidor e entram no QR, então o cliente não digita valor.
+- **Preço só no servidor:** valor enviado pelo navegador é ignorado.
+- **Acesso ao pedido (BOLA/IDOR):** token aleatório de 256 bits, guardado só como hash SHA-256, comparado em tempo constante; "não existe" e "token errado" respondem igual. O token viaja no fragmento da URL (`#t=`), que não vai ao servidor nem ao `Referer`. O painel gera um link novo quando precisa reenviar, invalidando o anterior.
+- **Uploads:** gravação em streaming com limite rígido; tipo decidido pelos bytes (não pelo nome); nome aleatório no disco; fotos reconvertidas no navegador e com EXIF/GPS removido também no servidor; permissões `0600/0700`; fotos travadas depois que a produção começa.
+- **Downloads:** URLs assinadas com HMAC e validade de 1 h; suporte a Range para vídeo no Safari.
+- **XSS:** CSP `script-src 'self'` sem `unsafe-inline`; frontend só usa `textContent`/atributos.
+- Cabeçalhos (CSP, HSTS em produção, `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, COOP), limitação de taxa, timeouts, bloqueio de path traversal, `PUBLIC_BASE_URL` fixo.
 
-## Riscos remanescentes (decisões conscientes)
+## Riscos e limitações (decisões conscientes)
 
-| Risco | Mitigação recomendada antes de escalar |
+| Risco | O que fazer |
 |---|---|
-| Persistência em JSON, 1 instância | Migrar `lib/store.mjs` para PostgreSQL (mesma interface) |
-| Limitação de taxa em memória | Redis quando houver mais de uma instância |
-| Cliente que perde o link do pedido em outro aparelho | Enviar o link por e-mail (SES/Resend) após o pagamento |
-| URLs de entrega públicas | Usar URLs assinadas com expiração no bucket |
-| Termos de uso/política de privacidade | Redigir com jurídico (LGPD, direitos de imagem, uso de IA em publicidade) |
-| Preços do catálogo | São ponto de partida — calibrar pelo custo real de geração por pedido |
+| **Conciliação manual do Pix** não escala bem (passa a pesar com dezenas de pedidos por dia) | Migrar para Pix dinâmico com webhook via um PSP (Mercado Pago, Efí, Asaas). A plataforma já tem a estrutura de provedor para isso |
+| **Comprovante falso** | Regra do passo 2 acima: confirme só pelo extrato |
+| **Chave Pix exposta** a todos os clientes | Use chave aleatória ou CNPJ, nunca CPF |
+| Txid de QR estático **nem sempre aparece** no extrato | O nome do pagador e o horário informados pelo cliente ajudam a localizar |
+| Persistência em JSON e arquivos no disco local, 1 instância | Backup diário da pasta `data/`; ao crescer, PostgreSQL + bucket de arquivos |
+| Cliente perde o link | Painel → "Link do cliente / WhatsApp" gera um novo |
+| Questões legais (CDC art. 37, CONAR, LGPD, direito de imagem) | Termos de uso e política de privacidade revisados por advogado antes de abrir ao público |
+| Nota fiscal e tributação das vendas | Ver com seu contador |
+
+## Automação opcional com bots Grok
+
+Se `GROK_BOT_URL` estiver configurado, cada pedido pago é enviado automaticamente ao bot (POST assinado com HMAC-SHA256 em `X-Studio-Signature`, com briefing e links assinados das fotos válidos por 7 dias), e o bot pode responder progresso e entrega em `POST /api/bots/callback`, também assinado. Sem a variável, nada é despachado e a produção é manual. O contrato está em `lib/grok.mjs` e há um bot de referência em `scripts/bot-exemplo.mjs`.
 
 ## Produção — checklist
 
-1. `NODE_ENV=production`, `PUBLIC_BASE_URL=https://…`, `ADMIN_TOKEN` e `BOT_SHARED_SECRET` com 32+ caracteres (o servidor não sobe sem eles).
-2. `PAYMENT_PROVIDER=stripe` + chaves; cadastrar o webhook em `/api/webhooks/stripe` com `checkout.session.completed` e `checkout.session.async_payment_succeeded`.
-3. Proxy reverso com TLS (Nginx/Caddy/Cloudflare) e `TRUST_PROXY=1`.
-4. `DELIVERY_ALLOWED_HOSTS` com o domínio do seu CDN.
-5. Backup do `DATA_FILE`.
+1. `NODE_ENV=production`, `PUBLIC_BASE_URL=https://…`, `ADMIN_TOKEN` com 32+ caracteres (o servidor não sobe sem eles).
+2. `PAYMENT_PROVIDER=pix` com `PIX_KEY` (aleatória ou CNPJ), `PIX_NAME` e `PIX_CITY` exatamente como no banco. Faça um Pix de teste de R$ 1 lendo o QR com o app de outro banco.
+3. Proxy reverso com TLS (Nginx/Caddy/Cloudflare) e `TRUST_PROXY=1`; aumente o limite de upload do proxy para o seu `MAX_DELIVERY_MB`.
+4. Backup da pasta `data/` (pedidos e arquivos).

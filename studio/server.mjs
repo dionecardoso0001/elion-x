@@ -2,16 +2,20 @@
  * ADVANCED TECH TI · STUDIO — servidor
  *
  * Node puro (sem framework), no mesmo espírito do ELION-X: cada linha aqui
- * é auditável. Fluxo do negócio:
+ * é auditável. Fluxo do negócio (modo padrão, produção feita pelo operador):
  *
- *   briefing → orçamento (servidor) → pedido + checkout → webhook do
- *   pagamento → despacho assinado ao bot Grok → callback assinado do bot
- *   → entrega na página do pedido.
+ *   galeria de estilos → briefing + fotos do produto → orçamento (servidor)
+ *   → Pix com QR/copia-e-cola → cliente avisa "já paguei" → operador confere
+ *   o extrato e confirma no painel → produz com as próprias IAs → envia os
+ *   arquivos pelo painel → cliente baixa na página do pedido → ajustes.
+ *
+ * A automação com bots Grok (despacho assinado + callbacks) continua
+ * disponível e só liga quando GROK_BOT_URL está configurado.
  *
  * Execução: `node server.mjs` (lê .env da pasta studio, se existir).
  */
 import { createServer } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, stat, rm } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, normalize, extname, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,8 +24,9 @@ import { publicCatalog, quote, findPackage } from './lib/catalog.mjs';
 import { validateOrderInput, httpsUrl, ValidationError } from './lib/validate.mjs';
 import { createStore } from './lib/store.mjs';
 import { paymentProvider } from './lib/payments.mjs';
-import { dispatchToBot, assistEnabled, suggestScript } from './lib/grok.mjs';
-import { randomToken, sha256, safeEqual, orderId, verifyBody } from './lib/crypto.mjs';
+import { dispatchToBot, botUrlFor, assistEnabled, suggestScript } from './lib/grok.mjs';
+import { randomToken, sha256, safeEqual, orderId, verifyBody, signBody } from './lib/crypto.mjs';
+import { saveUpload, signFileUrl, verifyFileUrl, sendFile, UploadError, TYPES } from './lib/files.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const PUBLIC = join(ROOT, 'public');
@@ -41,8 +46,8 @@ export function loadEnv(file = join(ROOT, '.env')) {
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png',
-  '.webp': 'image/webp', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json',
-  '.txt': 'text/plain; charset=utf-8',
+  '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
+  '.mp4': 'video/mp4', '.webm': 'video/webm', '.webmanifest': 'application/manifest+json', '.txt': 'text/plain; charset=utf-8',
 };
 
 const CSP = [
@@ -50,8 +55,8 @@ const CSP = [
   "script-src 'self'",
   "style-src 'self' https://fonts.googleapis.com",
   "font-src https://fonts.gstatic.com",
-  "img-src 'self' data: https:",
-  "media-src 'self' https:",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' blob: https:",
   "connect-src 'self'",
   "frame-ancestors 'none'",
   "base-uri 'none'",
@@ -109,25 +114,18 @@ function rateLimiter() {
   };
 }
 
-/* ── visão pública do pedido (sem hash de token, sem dados de pagamento) */
-function publicOrder(o) {
-  return {
-    id: o.id, status: o.status, progress: o.progress, createdAt: o.createdAt, updatedAt: o.updatedAt, dueAt: o.dueAt,
-    packageId: o.packageId, packageName: o.packageName, kind: o.kind, deliverables: o.deliverables,
-    quote: o.quote, briefing: o.briefing, customer: { name: o.customer.name, email: o.customer.email },
-    timeline: o.timeline, assets: o.assets, revisionsLeft: o.revisionsLeft,
-  };
-}
-
 const STATUS_TEXT = {
   awaiting_payment: 'Aguardando pagamento',
-  paid: 'Pagamento confirmado — enviando para o estúdio de IA',
+  payment_reported: 'Pagamento informado — aguardando confirmação no extrato',
+  paid: 'Pagamento confirmado — seu pedido entrou na fila de produção',
   in_production: 'Em produção',
   delivered: 'Entregue',
   revision_requested: 'Ajuste solicitado',
-  failed: 'Falha na produção — nossa equipe foi avisada',
+  failed: 'Houve um problema na produção — vamos falar com você',
   canceled: 'Cancelado',
 };
+
+const clean = (s, max) => String(s ?? '').replace(/[\u0000-\u001F\u007F]/g, ' ').trim().slice(0, max);
 
 /* ═════════════════════════════════════════════════════════════════════ */
 export async function createApp(env = process.env) {
@@ -140,13 +138,22 @@ export async function createApp(env = process.env) {
     if (payments.name === 'mock') throw new Error('PAYMENT_PROVIDER=mock é proibido em produção');
     if (!env.PUBLIC_BASE_URL?.startsWith('https://')) throw new Error('PUBLIC_BASE_URL https:// é obrigatório em produção');
     if (!env.ADMIN_TOKEN || env.ADMIN_TOKEN.length < 32) throw new Error('ADMIN_TOKEN com 32+ caracteres é obrigatório em produção');
-    if (!env.BOT_SHARED_SECRET || env.BOT_SHARED_SECRET.length < 32) throw new Error('BOT_SHARED_SECRET com 32+ caracteres é obrigatório em produção');
+    if (botUrlFor('video', env) && (!env.BOT_SHARED_SECRET || env.BOT_SHARED_SECRET.length < 32)) {
+      throw new Error('BOT_SHARED_SECRET com 32+ caracteres é obrigatório quando há bots configurados');
+    }
   }
 
-  const store = await createStore(env.DATA_FILE || join(ROOT, 'data', 'orders.json'));
+  const dataFile = env.DATA_FILE || join(ROOT, 'data', 'orders.json');
+  const filesRoot = join(dirname(dataFile), 'files');
+  const store = await createStore(dataFile);
   const allow = rateLimiter();
   const seenSignatures = new Map(); // anti-replay do callback dos bots
   const deliveryHosts = (env.DELIVERY_ALLOWED_HOSTS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  // Assina as URLs de arquivo. Sem variável, é aleatório por processo: links antigos expiram no reinício (seguro).
+  const fileSecret = env.FILE_SIGNING_SECRET || randomToken(32);
+  const botsOn = () => Boolean(botUrlFor('video', env) || botUrlFor('photo', env));
+  const maxDeliveryBytes = Number(env.MAX_DELIVERY_MB || 500) * 1048576;
+  const unpaidExpiryMs = Number(env.UNPAID_EXPIRY_HOURS || 72) * 3600_000;
 
   const clientIp = req => (env.TRUST_PROXY === '1'
     ? String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()
@@ -157,8 +164,52 @@ export async function createApp(env = process.env) {
   const pushTimeline = (o, status, message) => {
     o.status = status;
     o.timeline.push({ at: new Date().toISOString(), status, message: message || STATUS_TEXT[status] });
-    if (o.timeline.length > 60) o.timeline.splice(0, o.timeline.length - 60);
+    if (o.timeline.length > 80) o.timeline.splice(0, o.timeline.length - 80);
   };
+
+  const trackUrl = (id, token) => `${baseUrl}/pedido.html?id=${id}#t=${token}`;
+
+  /* ── aviso ao operador (opcional): POST assinado para o seu bot/automação ── */
+  async function notify(event, o) {
+    const url = (env.NOTIFY_WEBHOOK_URL || '').trim();
+    if (!url) return;
+    const body = JSON.stringify({
+      event, orderId: o.id, status: o.status, package: o.packageName, totalCents: o.quote.totalCents,
+      customer: { name: o.customer.name, whatsapp: o.customer.whatsapp }, adminUrl: `${baseUrl}/admin.html`,
+    });
+    const headers = { 'Content-Type': 'application/json', 'X-Studio-Event': event };
+    if (env.BOT_SHARED_SECRET) {
+      const s = signBody(env.BOT_SHARED_SECRET, body);
+      headers['X-Studio-Timestamp'] = s.timestamp;
+      headers['X-Studio-Signature'] = s.signature;
+    }
+    try {
+      await fetch(url, { method: 'POST', headers, body, redirect: 'error', signal: AbortSignal.timeout(10000) });
+    } catch (e) { log('notify.failed', { event, id: o.id, error: e.name }); }
+  }
+
+  /* ── visão pública do pedido ──────────────────────────────────────── */
+  const fileView = (o, f) => ({
+    id: f.id, label: f.label, kind: f.kind, ext: f.ext, size: f.size,
+    url: signFileUrl(fileSecret, o.id, f.id), download: `${signFileUrl(fileSecret, o.id, f.id)}&dl=1`,
+  });
+
+  function publicOrder(o) {
+    const assets = o.status === 'delivered' || o.status === 'revision_requested'
+      ? [...(o.files || []).map(f => ({ ...fileView(o, f), type: f.kind })), ...(o.links || []).map(l => ({ ...l, download: l.url }))]
+      : [];
+    return {
+      id: o.id, status: o.status, progress: o.progress, createdAt: o.createdAt, updatedAt: o.updatedAt, dueAt: o.dueAt,
+      packageId: o.packageId, packageName: o.packageName, kind: o.kind, deliverables: o.deliverables,
+      quote: o.quote, briefing: o.briefing, customer: { name: o.customer.name, email: o.customer.email },
+      timeline: o.timeline, assets, revisionsLeft: o.revisionsLeft,
+      photos: (o.photos || []).map(p => fileView(o, p)),
+      canUploadPhotos: ['awaiting_payment', 'payment_reported', 'paid'].includes(o.status),
+      payment: ['awaiting_payment', 'payment_reported'].includes(o.status) && payments.instructions
+        ? { ...payments.instructions(o), reportedAt: o.payment?.reportedAt || null }
+        : { method: payments.name },
+    };
+  }
 
   /* ── autenticação ─────────────────────────────────────────────────── */
   const bearer = req => String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
@@ -176,42 +227,47 @@ export async function createApp(env = process.env) {
   }
 
   /* ── pagamento confirmado (idempotente) ───────────────────────────── */
-  async function markPaid(id, { provider, sessionId, amountCents }) {
+  async function markPaid(id, { provider, sessionId, amountCents, by }) {
     const updated = await store.update(id, o => {
-      if (o.status !== 'awaiting_payment') return; // webhook repetido: ignora
+      if (!['awaiting_payment', 'payment_reported'].includes(o.status)) return; // repetido: ignora
       if (amountCents !== undefined && amountCents !== o.quote.totalCents) {
         log('payment.amount_mismatch', { id, expected: o.quote.totalCents, got: amountCents });
         return;
       }
-      o.payment = { provider, sessionId, paidAt: new Date().toISOString() };
+      o.payment = { ...o.payment, provider, sessionId, paidAt: new Date().toISOString(), confirmedBy: by || provider };
       o.dueAt = new Date(Date.now() + o.quote.slaHours * 3600_000).toISOString();
-      o.dispatch = { attempts: 0, nextAttemptAt: Date.now(), lastError: null };
+      o.dispatch = botsOn() ? { attempts: 0, nextAttemptAt: Date.now(), lastError: null } : null;
       pushTimeline(o, 'paid');
     });
-    if (updated?.status === 'paid') { log('order.paid', { id, provider }); runDispatch(id); }
+    if (updated?.status === 'paid') {
+      log('order.paid', { id, provider });
+      if (botsOn()) runDispatch(id);
+    }
     return updated;
   }
 
-  /* ── despacho aos bots com nova tentativa exponencial ─────────────── */
+  /* ── despacho aos bots (só quando configurados) ───────────────────── */
   const inFlight = new Set();
   async function runDispatch(id, event = 'order.paid', extra) {
-    if (inFlight.has(id)) return;
+    if (inFlight.has(id) || !botsOn()) return;
     inFlight.add(id);
     try {
       const o = store.get(id);
       if (!o || !['paid', 'revision_requested'].includes(o.status)) return;
-      const r = await dispatchToBot(o, { baseUrl, env, event, extra });
+      // Fotos do produto vão como links assinados válidos por 7 dias.
+      const photos = (o.photos || []).map(f => ({ label: f.label, url: baseUrl + signFileUrl(fileSecret, o.id, f.id, 7 * 86400) }));
+      const r = await dispatchToBot(o, { baseUrl, env, event, extra: { ...extra, photos } });
       await store.update(id, x => {
+        x.dispatch ||= { attempts: 0 };
         x.dispatch.attempts += 1;
         if (r.ok) {
           x.dispatch.lastError = null;
           x.dispatch.nextAttemptAt = null;
           x.dispatch.dispatchedAt = new Date().toISOString();
           x.progress = Math.max(x.progress, 10);
-          pushTimeline(x, 'in_production', 'Briefing entregue ao bot Grok — produção iniciada');
+          pushTimeline(x, 'in_production', 'Briefing entregue ao estúdio de IA — produção iniciada');
         } else {
           x.dispatch.lastError = r.error;
-          // 30 s, 1 min, 2 min, 4 min, 8 min… teto de 30 min; para após 8 tentativas.
           x.dispatch.nextAttemptAt = x.dispatch.attempts >= 8 ? null : Date.now() + Math.min(30_000 * 2 ** (x.dispatch.attempts - 1), 1_800_000);
         }
       });
@@ -221,41 +277,47 @@ export async function createApp(env = process.env) {
     }
   }
 
-  const worker = setInterval(() => {
+  const worker = setInterval(async () => {
     for (const o of store.list()) {
-      if (['paid', 'revision_requested'].includes(o.status) && o.dispatch?.nextAttemptAt && o.dispatch.nextAttemptAt <= Date.now()) {
+      if (botsOn() && ['paid', 'revision_requested'].includes(o.status) && o.dispatch?.nextAttemptAt && o.dispatch.nextAttemptAt <= Date.now()) {
         runDispatch(o.id, o.status === 'revision_requested' ? 'order.revision' : 'order.paid', o.status === 'revision_requested' ? { revisionNote: o.lastRevisionNote } : undefined);
       }
+      // Pedido sem pagamento (nem aviso de pagamento) expira e libera o painel.
+      if (o.status === 'awaiting_payment' && Date.now() - Date.parse(o.createdAt) > unpaidExpiryMs) {
+        await store.update(o.id, x => { if (x.status === 'awaiting_payment') pushTimeline(x, 'canceled', 'Cancelado automaticamente: pagamento não identificado no prazo'); });
+      }
     }
-  }, 15_000);
+  }, 30_000);
   worker.unref();
 
-  /* ── validação dos arquivos entregues pelo bot ────────────────────── */
-  function validateAssets(list) {
-    if (!Array.isArray(list) || list.length > 40) throw new HttpError(400, 'assets inválidos');
+  /* ── validação de links de entrega externos (bot ou operador) ─────── */
+  function validateLinks(list) {
+    if (!Array.isArray(list) || list.length > 40) throw new HttpError(400, 'links inválidos');
     return list.map((a, i) => {
       const url = httpsUrl(a?.url, `assets[${i}].url`);
       if (deliveryHosts.length && !deliveryHosts.includes(new URL(url).hostname.toLowerCase())) {
         throw new HttpError(400, `assets[${i}]: host não permitido`);
       }
-      const type = a?.type === 'image' ? 'image' : a?.type === 'video' ? 'video' : null;
-      if (!type) throw new HttpError(400, `assets[${i}].type deve ser video ou image`);
+      const type = ['image', 'video'].includes(a?.type) ? a.type : 'link';
       return {
         type, url,
         thumbnail: a.thumbnail ? httpsUrl(a.thumbnail, `assets[${i}].thumbnail`) : null,
-        label: String(a.label || (type === 'video' ? 'Vídeo' : 'Imagem')).slice(0, 80),
+        label: clean(a.label || (type === 'video' ? 'Vídeo' : type === 'image' ? 'Imagem' : 'Link'), 80),
       };
     });
   }
+
+  const orderDir = id => join(filesRoot, id);
 
   /* ── rotas ────────────────────────────────────────────────────────── */
   async function api(req, res, url) {
     const ip = clientIp(req);
     const path = url.pathname;
     const m = (method, re) => req.method === method && path.match(re);
+    const ID = '(AT-[A-Z0-9]{8})';
     let p;
 
-    if (m('GET', /^\/api\/health$/)) return json(res, 200, { ok: true, payments: payments.name, assistant: assistEnabled(env) });
+    if (m('GET', /^\/api\/health$/)) return json(res, 200, { ok: true, payments: payments.name, assistant: assistEnabled(env), bots: botsOn() });
 
     if (m('GET', /^\/api\/catalog$/)) return json(res, 200, { ...publicCatalog(), assistant: assistEnabled(env), payments: payments.name });
 
@@ -290,7 +352,7 @@ export async function createApp(env = process.env) {
         status: 'awaiting_payment', progress: 0,
         packageId: pkg.id, packageName: pkg.name, kind: pkg.kind, durationSec: pkg.durationSec,
         deliverables: pkg.deliverables, quote: q, briefing: input.briefing, customer: input.customer,
-        payment: null, dispatch: null, dueAt: null, assets: [],
+        payment: null, dispatch: null, dueAt: null, photos: [], files: [], links: [],
         revisionsLeft: pkg.revisions, revisionsUsed: 0,
         timeline: [{ at: now, status: 'awaiting_payment', message: 'Pedido criado' }],
       };
@@ -304,35 +366,82 @@ export async function createApp(env = process.env) {
       }
       await store.update(order.id, o => { o.payment = { provider: payments.name, sessionId: checkout.sessionId, paidAt: null }; });
       log('order.created', { id: order.id, package: pkg.id, total: q.totalCents });
-      return json(res, 201, {
-        id: order.id, accessToken: token, checkoutUrl: checkout.url,
-        trackUrl: `${baseUrl}/pedido.html?id=${order.id}#t=${token}`,
-      });
+      notify('order.created', order);
+      const track = trackUrl(order.id, token);
+      return json(res, 201, { id: order.id, accessToken: token, checkoutUrl: checkout.url || track, trackUrl: track });
     }
 
-    if ((p = m('GET', /^\/api\/orders\/(AT-[A-Z0-9]{8})$/))) {
+    if ((p = m('GET', new RegExp(`^/api/orders/${ID}$`)))) {
       if (!allow(`g:${ip}`, 120, 60_000)) throw new HttpError(429, 'muitas requisições');
       return json(res, 200, publicOrder(requireOrderAccess(req, p[1])));
     }
 
-    if ((p = m('POST', /^\/api\/orders\/(AT-[A-Z0-9]{8})\/revision$/))) {
+    /* Cliente avisa que pagou. NÃO marca como pago: só sinaliza ao operador. */
+    if ((p = m('POST', new RegExp(`^/api/orders/${ID}/payment-reported$`)))) {
+      if (!allow(`pr:${ip}`, 10, 60 * 60_000)) throw new HttpError(429, 'muitas requisições');
+      const o = requireOrderAccess(req, p[1]);
+      const b = await readJson(req, 2048);
+      if (!payments.manual) throw new HttpError(409, 'este pedido é confirmado automaticamente pelo provedor de pagamento');
+      if (o.status !== 'awaiting_payment') return json(res, 200, publicOrder(o));
+      const r = await store.update(o.id, x => {
+        x.payment = { ...x.payment, reportedAt: new Date().toISOString(), payerName: clean(b.payerName, 100) };
+        pushTimeline(x, 'payment_reported');
+      });
+      log('payment.reported', { id: o.id });
+      notify('payment.reported', r);
+      return json(res, 200, publicOrder(r));
+    }
+
+    /* Fotos do produto enviadas pelo cliente (corpo binário). */
+    if ((p = m('PUT', new RegExp(`^/api/orders/${ID}/photos$`)))) {
+      if (!allow(`up:${ip}`, 40, 60 * 60_000)) throw new HttpError(429, 'muitos envios — aguarde um pouco');
+      const o = requireOrderAccess(req, p[1]);
+      if (!['awaiting_payment', 'payment_reported', 'paid'].includes(o.status)) throw new HttpError(409, 'a produção já começou — fale com a gente para enviar mais fotos');
+      if ((o.photos || []).length >= 8) throw new HttpError(409, 'limite de 8 fotos por pedido');
+      const meta = await saveUpload(req, { dir: orderDir(o.id), allowed: ['jpg', 'png', 'webp'], maxBytes: 12 * 1048576, label: decodeURIComponent(String(req.headers['x-file-label'] || 'Foto')) });
+      const r = await store.update(o.id, x => { x.photos = [...(x.photos || []), meta]; });
+      log('photo.uploaded', { id: o.id, size: meta.size });
+      return json(res, 201, publicOrder(r));
+    }
+
+    if ((p = m('DELETE', new RegExp(`^/api/orders/${ID}/photos/([A-Za-z0-9_-]{16})$`)))) {
+      const o = requireOrderAccess(req, p[1]);
+      if (!['awaiting_payment', 'payment_reported', 'paid'].includes(o.status)) throw new HttpError(409, 'a produção já começou');
+      const f = (o.photos || []).find(x => x.id === p[2]);
+      if (!f) throw new HttpError(404, 'foto não encontrada');
+      await rm(join(orderDir(o.id), f.file), { force: true });
+      const r = await store.update(o.id, x => { x.photos = x.photos.filter(y => y.id !== f.id); });
+      return json(res, 200, publicOrder(r));
+    }
+
+    /* Arquivos (fotos do cliente e entregas) por URL assinada. */
+    if ((p = req.method.match(/^(GET|HEAD)$/) && path.match(new RegExp(`^/api/files/${ID}/([A-Za-z0-9_-]{16})$`)))) {
+      if (!verifyFileUrl(fileSecret, p[1], p[2], url.searchParams.get('exp'), url.searchParams.get('sig'))) throw new HttpError(403, 'link expirado — recarregue a página');
+      const o = store.get(p[1]);
+      const f = [...(o?.photos || []), ...(o?.files || [])].find(x => x.id === p[2]);
+      if (!f) throw new HttpError(404, 'arquivo não encontrado');
+      return sendFile(req, res, join(orderDir(o.id), f.file), { mime: TYPES[f.ext].mime, ext: f.ext, label: f.label, download: url.searchParams.get('dl') === '1' });
+    }
+
+    if ((p = m('POST', new RegExp(`^/api/orders/${ID}/revision$`)))) {
       if (!allow(`r:${ip}`, 10, 60 * 60_000)) throw new HttpError(429, 'muitas requisições');
       const o = requireOrderAccess(req, p[1]);
       const b = await readJson(req, 4096);
-      const note = String(b.note || '').replace(/[\u0000-\u001F\u007F]/g, ' ').trim().slice(0, 1000);
+      const note = clean(b.note, 1000);
       if (note.length < 10) throw new HttpError(400, 'descreva o ajuste (mínimo 10 caracteres)');
       if (o.status !== 'delivered') throw new HttpError(409, 'ajustes só podem ser pedidos após a entrega');
       if (o.revisionsLeft <= 0) throw new HttpError(409, 'as rodadas de ajuste deste pacote acabaram');
-      await store.update(o.id, x => {
+      const r = await store.update(o.id, x => {
         x.revisionsLeft -= 1;
         x.revisionsUsed += 1;
         x.lastRevisionNote = note;
         x.progress = 10;
-        x.dispatch = { ...x.dispatch, nextAttemptAt: Date.now(), lastError: null };
+        if (botsOn()) x.dispatch = { ...x.dispatch, nextAttemptAt: Date.now(), lastError: null };
         pushTimeline(x, 'revision_requested', `Ajuste solicitado: ${note.slice(0, 140)}`);
       });
+      notify('revision.requested', r);
       runDispatch(o.id, 'order.revision', { revisionNote: note });
-      return json(res, 200, publicOrder(store.get(o.id)));
+      return json(res, 200, publicOrder(r));
     }
 
     /* Webhook do Stripe — corpo BRUTO para verificar a assinatura. */
@@ -358,7 +467,7 @@ export async function createApp(env = process.env) {
       return json(res, 200, publicOrder(r));
     }
 
-    /* Retorno dos bots Grok — assinado com BOT_SHARED_SECRET. */
+    /* Retorno dos bots Grok (automação opcional) — assinado com BOT_SHARED_SECRET. */
     if (m('POST', /^\/api\/bots\/callback$/)) {
       if (!allow(`cb:${ip}`, 600, 60_000)) throw new HttpError(429, 'muitas requisições');
       const raw = await readBody(req, 256 * 1024);
@@ -373,9 +482,9 @@ export async function createApp(env = process.env) {
       try { b = JSON.parse(raw); } catch { throw new HttpError(400, 'JSON inválido'); }
       const status = b.status;
       if (!['in_production', 'delivered', 'failed'].includes(status)) throw new HttpError(400, 'status inválido');
-      const assets = status === 'delivered' ? validateAssets(b.assets) : [];
-      if (status === 'delivered' && !assets.length) throw new HttpError(400, 'entrega sem arquivos');
-      const message = b.message ? String(b.message).replace(/[\u0000-\u001F\u007F]/g, ' ').slice(0, 200) : undefined;
+      const links = status === 'delivered' ? validateLinks(b.assets) : [];
+      if (status === 'delivered' && !links.length) throw new HttpError(400, 'entrega sem arquivos');
+      const message = b.message ? clean(b.message, 200) : undefined;
 
       let ignored = false;
       const updated = await store.update(String(b.orderId || ''), o => {
@@ -385,7 +494,7 @@ export async function createApp(env = process.env) {
           o.progress = Math.max(o.progress, progress);
           if (o.status !== 'in_production' || message) pushTimeline(o, 'in_production', message);
         } else if (status === 'delivered') {
-          o.assets = assets;
+          o.links = links;
           o.progress = 100;
           pushTimeline(o, 'delivered', message || 'Seu material está pronto para download');
         } else {
@@ -397,32 +506,83 @@ export async function createApp(env = process.env) {
       return json(res, 200, { ok: true, ignored });
     }
 
-    /* ── administração ── */
-    if (m('GET', /^\/api\/admin\/orders$/)) {
+    /* ── administração (operador) ── */
+    if (path.startsWith('/api/admin/')) {
       requireAdmin(req);
-      return json(res, 200, store.list().map(o => ({ ...publicOrder(o), customer: o.customer, dispatch: o.dispatch, payment: o.payment })));
-    }
-    if ((p = m('POST', /^\/api\/admin\/orders\/(AT-[A-Z0-9]{8})\/dispatch$/))) {
-      requireAdmin(req);
-      const o = store.get(p[1]);
-      if (!o) throw new HttpError(404, 'pedido não encontrado');
-      if (!['paid', 'revision_requested'].includes(o.status)) throw new HttpError(409, `não dá para despachar no status ${o.status}`);
-      await runDispatch(o.id, o.status === 'revision_requested' ? 'order.revision' : 'order.paid', o.status === 'revision_requested' ? { revisionNote: o.lastRevisionNote } : undefined);
-      return json(res, 200, store.get(o.id).dispatch);
-    }
-    if ((p = m('POST', /^\/api\/admin\/orders\/(AT-[A-Z0-9]{8})\/deliver$/))) {
-      requireAdmin(req);
-      const b = await readJson(req, 64 * 1024);
-      const assets = validateAssets(b.assets);
-      if (!assets.length) throw new HttpError(400, 'informe ao menos um arquivo');
-      const r = await store.update(p[1], o => {
-        if (o.status === 'awaiting_payment' || o.status === 'canceled') throw new HttpError(409, 'pedido não pago');
-        o.assets = assets;
-        o.progress = 100;
-        pushTimeline(o, 'delivered', 'Entregue pela equipe Advanced Tech TI');
-      });
-      if (!r) throw new HttpError(404, 'pedido não encontrado');
-      return json(res, 200, publicOrder(r));
+      const admin = o => ({ ...publicOrder(o), customer: o.customer, payment: { ...publicOrder(o).payment, ...o.payment }, dispatch: o.dispatch, files: (o.files || []).map(f => fileView(o, f)), links: o.links || [], lastRevisionNote: o.lastRevisionNote || null });
+      const get = id => { const o = store.get(id); if (!o) throw new HttpError(404, 'pedido não encontrado'); return o; };
+
+      if (m('GET', /^\/api\/admin\/orders$/)) return json(res, 200, store.list().map(admin));
+
+      if ((p = m('POST', new RegExp(`^/api/admin/orders/${ID}/confirm-payment$`)))) {
+        const o = get(p[1]);
+        if (!['awaiting_payment', 'payment_reported'].includes(o.status)) throw new HttpError(409, `pedido já está em "${o.status}"`);
+        return json(res, 200, admin(await markPaid(o.id, { provider: payments.name, sessionId: o.payment?.sessionId, by: 'operador' })));
+      }
+
+      if ((p = m('POST', new RegExp(`^/api/admin/orders/${ID}/status$`)))) {
+        const b = await readJson(req, 4096);
+        const o = get(p[1]);
+        const allowed = { in_production: ['paid', 'revision_requested', 'in_production', 'failed'], failed: ['paid', 'in_production', 'revision_requested'], canceled: ['awaiting_payment', 'payment_reported', 'paid', 'failed'] };
+        if (!allowed[b.status]) throw new HttpError(400, 'status inválido');
+        if (!allowed[b.status].includes(o.status)) throw new HttpError(409, `não dá para ir de "${o.status}" para "${b.status}"`);
+        const r = await store.update(o.id, x => {
+          if (Number.isFinite(b.progress)) x.progress = Math.max(0, Math.min(99, Math.round(b.progress)));
+          else if (b.status === 'in_production') x.progress = Math.max(x.progress, 15);
+          pushTimeline(x, b.status, b.message ? clean(b.message, 200) : undefined);
+        });
+        return json(res, 200, admin(r));
+      }
+
+      if ((p = m('PUT', new RegExp(`^/api/admin/orders/${ID}/files$`)))) {
+        const o = get(p[1]);
+        if (['awaiting_payment', 'payment_reported', 'canceled'].includes(o.status)) throw new HttpError(409, 'confirme o pagamento antes de enviar arquivos');
+        if ((o.files || []).length >= 40) throw new HttpError(409, 'limite de 40 arquivos por pedido');
+        const meta = await saveUpload(req, { dir: orderDir(o.id), allowed: Object.keys(TYPES), maxBytes: maxDeliveryBytes, label: decodeURIComponent(String(req.headers['x-file-label'] || 'Arquivo')) });
+        const r = await store.update(o.id, x => { x.files = [...(x.files || []), meta]; });
+        log('delivery.uploaded', { id: o.id, ext: meta.ext, size: meta.size });
+        return json(res, 201, admin(r));
+      }
+
+      if ((p = m('DELETE', new RegExp(`^/api/admin/orders/${ID}/files/([A-Za-z0-9_-]{16})$`)))) {
+        const o = get(p[1]);
+        const f = (o.files || []).find(x => x.id === p[2]);
+        if (!f) throw new HttpError(404, 'arquivo não encontrado');
+        await rm(join(orderDir(o.id), f.file), { force: true });
+        return json(res, 200, admin(await store.update(o.id, x => { x.files = x.files.filter(y => y.id !== f.id); })));
+      }
+
+      if ((p = m('POST', new RegExp(`^/api/admin/orders/${ID}/deliver$`)))) {
+        const b = await readJson(req, 64 * 1024);
+        const o = get(p[1]);
+        if (!['paid', 'in_production', 'revision_requested', 'failed'].includes(o.status)) throw new HttpError(409, `não dá para entregar no status "${o.status}"`);
+        const links = b.links?.length ? validateLinks(b.links) : (o.links || []);
+        if (!(o.files || []).length && !links.length) throw new HttpError(400, 'envie ao menos um arquivo ou link antes de entregar');
+        const r = await store.update(o.id, x => {
+          x.links = links;
+          x.progress = 100;
+          pushTimeline(x, 'delivered', b.message ? clean(b.message, 200) : 'Seu material está pronto para download');
+        });
+        log('order.delivered', { id: o.id, files: (o.files || []).length, links: links.length });
+        return json(res, 200, admin(r));
+      }
+
+      /* Gera um novo link de acesso (o anterior deixa de valer) para mandar ao cliente. */
+      if ((p = m('POST', new RegExp(`^/api/admin/orders/${ID}/access-link$`)))) {
+        const o = get(p[1]);
+        const token = randomToken();
+        await store.update(o.id, x => { x.tokenHash = sha256(token); });
+        log('order.link_rotated', { id: o.id });
+        return json(res, 200, { trackUrl: trackUrl(o.id, token) });
+      }
+
+      if ((p = m('POST', new RegExp(`^/api/admin/orders/${ID}/dispatch$`)))) {
+        const o = get(p[1]);
+        if (!botsOn()) throw new HttpError(409, 'nenhum bot configurado (GROK_BOT_URL)');
+        if (!['paid', 'revision_requested'].includes(o.status)) throw new HttpError(409, `não dá para despachar no status ${o.status}`);
+        await runDispatch(o.id, o.status === 'revision_requested' ? 'order.revision' : 'order.paid', o.status === 'revision_requested' ? { revisionNote: o.lastRevisionNote } : undefined);
+        return json(res, 200, admin(store.get(o.id)));
+      }
     }
 
     throw new HttpError(404, 'rota inexistente');
@@ -457,15 +617,18 @@ export async function createApp(env = process.env) {
       const status = e.status || (e instanceof ValidationError ? 400 : 500);
       if (status >= 500) log('error', { path: url.pathname, error: e.message });
       if (res.headersSent) return res.end();
+      if (!req.complete) res.setHeader('Connection', 'close'); // upload recusado no meio: não lê o resto
       if (url.pathname.startsWith('/api/')) {
-        json(res, status, { error: status >= 500 && !(e instanceof HttpError) ? 'erro interno' : e.message, field: e.field });
+        const known = e instanceof HttpError || e instanceof ValidationError || e instanceof UploadError || (e.status && e.status < 500);
+        json(res, status, { error: known ? e.message : 'erro interno', field: e.field });
       } else {
         res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end(status === 404 ? 'Página não encontrada' : 'Erro');
       }
     }
   });
-  server.requestTimeout = 30_000;
+  // Uploads de vídeo podem demorar; o tempo para receber os CABEÇALHOS continua curto.
+  server.requestTimeout = 20 * 60_000;
   server.headersTimeout = 15_000;
 
   return { server, store, port, baseUrl, close: () => { clearInterval(worker); return new Promise(r => server.close(r)); } };

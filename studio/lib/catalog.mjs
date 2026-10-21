@@ -1,3 +1,5 @@
+import { STYLE_GALLERY, CATEGORIES } from './styles.mjs';
+
 /**
  * CATÁLOGO — fonte única de verdade dos preços.
  *
@@ -67,7 +69,6 @@ export const ADDONS = [
 ];
 
 export const GOALS = ['vender-produto', 'autopromocao', 'lancamento', 'evento', 'institucional'];
-export const STYLES = ['cinematico', 'divertido', 'minimalista', 'futurista', 'ugc'];
 export const FORMATS = ['9:16', '1:1', '16:9'];
 
 export const findPackage = id => PACKAGES.find(p => p.id === id) || null;
@@ -94,4 +95,7 @@ export function quote(packageId, addonIds = []) {
 }
 
 /** Versão pública do catálogo (o que o frontend pode ver). */
-export const publicCatalog = () => ({ packages: PACKAGES, addons: ADDONS, goals: GOALS, styles: STYLES, formats: FORMATS });
+export const publicCatalog = () => ({ packages: PACKAGES, addons: ADDONS, goals: GOALS, formats: FORMATS, styles: STYLE_GALLERY, categories: CATEGORIES });
+
+/** Quais mídias o pacote produz: define que estilos o cliente precisa escolher. */
+export const mediaOf = pkg => [pkg.deliverables.videos > 0 && 'video', pkg.deliverables.images > 0 && 'image'].filter(Boolean);

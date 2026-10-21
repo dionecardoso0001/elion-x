@@ -1,6 +1,10 @@
 /**
- * PAGAMENTOS — adaptador com dois provedores:
+ * PAGAMENTOS — adaptador com três provedores:
  *
+ *  - "pix":    Pix estático com a SUA chave. O site mostra QR e copia-e-cola
+ *              com valor e id do pedido; o cliente avisa "já paguei" e VOCÊ
+ *              confirma no painel depois de ver o crédito no extrato.
+ *              Sem taxa de intermediário; conciliação manual.
  *  - "mock":   checkout simulado para desenvolvimento. O servidor RECUSA
  *              iniciar com ele em NODE_ENV=production.
  *  - "stripe": Stripe Checkout (cartão; Pix/boleto conforme habilitado na
@@ -11,6 +15,7 @@
  * nunca pelo redirecionamento do navegador (que qualquer um pode forjar).
  */
 import { hmacHex, safeEqual } from './crypto.mjs';
+import { pixPayload } from './pix.mjs';
 
 const STRIPE_API = 'https://api.stripe.com/v1';
 
@@ -18,7 +23,31 @@ export function paymentProvider(env = process.env) {
   const name = (env.PAYMENT_PROVIDER || 'mock').toLowerCase();
   if (name === 'stripe') return stripeProvider(env);
   if (name === 'mock') return mockProvider(env);
+  if (name === 'pix') return pixProvider(env);
   throw new Error(`PAYMENT_PROVIDER desconhecido: ${name}`);
+}
+
+function pixProvider(env) {
+  const key = (env.PIX_KEY || '').trim();
+  const holder = (env.PIX_NAME || '').trim();
+  const city = (env.PIX_CITY || '').trim();
+  if (!key || !holder || !city) throw new Error('Pix exige PIX_KEY, PIX_NAME e PIX_CITY no .env');
+  return {
+    name: 'pix',
+    manual: true,
+    // O "checkout" é a própria página do pedido, que mostra o QR.
+    async createCheckout({ order }) { return { sessionId: `pix_${order.id}`, url: null }; },
+    instructions(order) {
+      return {
+        method: 'pix',
+        key,
+        holder,
+        amountCents: order.quote.totalCents,
+        txid: order.id.replace(/[^A-Z0-9]/g, ''),
+        copyPaste: pixPayload({ key, name: holder, city, amountCents: order.quote.totalCents, txid: order.id, description: `Pedido ${order.id}` }),
+      };
+    },
+  };
 }
 
 function mockProvider() {

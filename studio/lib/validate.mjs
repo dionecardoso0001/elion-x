@@ -5,9 +5,10 @@
  * básico, limito o tamanho de cada campo e removo caracteres de controle:
  * texto gigante encarece a geração e facilita injeção de prompt.
  */
-import { GOALS, STYLES, FORMATS, findPackage, ADDONS } from './catalog.mjs';
+import { GOALS, FORMATS, findPackage, ADDONS, mediaOf } from './catalog.mjs';
+import { findStyle, CATEGORIES } from './styles.mjs';
 
-const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F‪-‮⁦-⁩]/g;
+const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069]/g;
 
 export class ValidationError extends Error {
   constructor(field, message) { super(message); this.field = field; this.status = 400; }
@@ -54,9 +55,18 @@ export function validateOrderInput(body) {
   const b = body.briefing || {};
   const references = Array.isArray(b.references) ? b.references.filter(Boolean).slice(0, 5) : [];
 
+  // Um estilo por mídia que o pacote produz (vídeo e/ou imagem).
+  const styles = {};
+  for (const medium of mediaOf(findPackage(packageId))) {
+    const st = findStyle(String(b.styles?.[medium] || ''));
+    if (!st || st.medium !== medium) throw new ValidationError(`styles.${medium}`, medium === 'video' ? 'escolha um estilo de vídeo' : 'escolha um estilo de imagem');
+    styles[medium] = st.id;
+  }
+
   const briefing = {
     goal: oneOf(b.goal, GOALS, 'goal'),
-    style: oneOf(b.style, STYLES, 'style'),
+    category: oneOf(b.category, CATEGORIES.map(c => c[0]), 'category'),
+    styles,
     format: oneOf(b.format, FORMATS, 'format'),
     brand: text(b.brand, 'brand', { required: true, min: 2, max: 80 }),
     product: text(b.product, 'product', { required: true, min: 2, max: 120 }),

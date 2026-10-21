@@ -73,7 +73,43 @@
 
   const fmtDate = iso => iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 
-  window.Studio = { h, api, brl, magnetic, tilt, reveal, fmtDate, reduced, finePointer };
+  /* Reconverte a foto para JPEG via canvas: apaga EXIF/GPS, converte HEIC
+     (onde o navegador decodifica) e reduz para no máximo 2560 px. */
+  async function prepareImage(file, max = 2560) {
+    let bmp;
+    try { bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+    catch { throw new Error(`Não consegui ler "${file.name}". Envie em JPG ou PNG.`); }
+    const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close?.();
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+    if (!blob) throw new Error(`Falha ao processar "${file.name}".`);
+    return blob;
+  }
+
+  /* PUT binário com barra de progresso (fetch não informa progresso de envio). */
+  function upload(url, blob, { token, label, onProgress } = {}) {
+    return new Promise((resolve, reject) => {
+      const x = new XMLHttpRequest();
+      x.open('PUT', url);
+      if (token) x.setRequestHeader('Authorization', `Bearer ${token}`);
+      x.setRequestHeader('Content-Type', blob.type || 'application/octet-stream');
+      x.setRequestHeader('X-File-Label', encodeURIComponent(String(label || 'Arquivo').slice(0, 80)));
+      x.upload.onprogress = e => e.lengthComputable && onProgress?.(e.loaded / e.total);
+      x.onload = () => {
+        let j = {}; try { j = JSON.parse(x.responseText); } catch { /* vazio */ }
+        x.status < 300 ? resolve(j) : reject(Object.assign(new Error(j.error || `Erro ${x.status}`), { status: x.status }));
+      };
+      x.onerror = () => reject(new Error('Falha de conexão durante o envio.'));
+      x.send(blob);
+    });
+  }
+
+  const fmtSize = b => b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
+
+  window.Studio = { h, api, brl, magnetic, tilt, reveal, fmtDate, fmtSize, prepareImage, upload, reduced, finePointer };
 
   document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.magnetic').forEach(el => magnetic(el));
