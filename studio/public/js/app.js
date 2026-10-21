@@ -34,6 +34,32 @@
     );
   }
 
+  /* Exemplo de referência do estilo: miniatura que amplia ao clicar. */
+  function exampleButton(st) {
+    return h('button', { type: 'button', class: 'example-btn', 'aria-label': `Ampliar exemplo do estilo ${st.name}`, onclick: e => openLightbox(st, e.currentTarget) },
+      h('img', { src: st.example.thumb, alt: st.example.alt, loading: 'lazy', width: 640, height: 480 }),
+      h('span', { class: 'example-tag' }, 'Exemplo · ampliar'),
+    );
+  }
+
+  function openLightbox(st, opener) {
+    const close = () => { box.remove(); document.removeEventListener('keydown', onKey); opener?.focus(); };
+    const onKey = e => { if (e.key === 'Escape') close(); };
+    const box = h('div', { class: 'modal lightbox', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Exemplo: ${st.name}`, onclick: e => { if (e.target === box) close(); } },
+      h('figure', { class: 'lb-figure' },
+        h('img', { src: st.example.full, alt: st.example.alt }),
+        h('figcaption', {},
+          h('span', {}, h('b', {}, st.name), ` — ${st.summary}`),
+          h('small', {}, 'Imagem ilustrativa criada com IA para demonstrar o estilo. Marcas exibidas pertencem aos seus titulares; não há parceria nem vínculo.'),
+        ),
+        h('button', { type: 'button', class: 'btn btn-sm lb-close', onclick: close, 'aria-label': 'Fechar' }, '✕ Fechar'),
+      ),
+    );
+    document.body.append(box);
+    document.addEventListener('keydown', onKey);
+    box.querySelector('.lb-close').focus();
+  }
+
   function renderGallery(medium) {
     document.querySelectorAll('.tabs [role="tab"]').forEach(t => {
       const on = t.dataset.medium === medium;
@@ -43,7 +69,7 @@
     });
     const list = state.catalog.styles.filter(s => s.medium === medium);
     $('#gallery').replaceChildren(...list.map(st => h('article', { class: 'card style-card reveal' },
-      miniScreen(st),
+      st.example ? exampleButton(st) : h('div', { class: 'mini-frame' }, miniScreen(st)),
       h('div', { class: 'style-body' },
         h('span', { class: 'style-tag' }, st.medium === 'video' ? 'Vídeo' : 'Imagem'),
         h('h3', {}, st.name),
@@ -163,7 +189,7 @@
           const id = `${name}-${st.id}`;
           return h('div', { class: 'choice' },
             h('input', { type: 'radio', name, id, value: st.id, checked: state.styles[medium] === st.id, onchange: () => { state.styles[medium] = st.id; updatePreview(true); clearError(); } }),
-            h('label', { for: id }, h('b', {}, st.name), h('small', {}, st.summary)),
+            h('label', { for: id }, st.example ? h('img', { class: 'choice-thumb', src: st.example.thumb, alt: '', loading: 'lazy', width: 320, height: 200 }) : h('div', { class: 'choice-thumb screen', 'data-style': st.preview, 'aria-hidden': 'true' }, h('div', { class: 'bg' })), h('b', {}, st.name), h('small', {}, st.summary)),
           );
         })),
       );

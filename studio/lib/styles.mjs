@@ -3,8 +3,8 @@
  *
  * Cada estilo explica, em linguagem de cliente: o que é, para que serve e
  * o que ele precisa mandar. `preview` escolhe o tema animado (CSS) usado na
- * miniatura e no preview do estúdio — são ilustrações de layout, não
- * amostras de trabalho entregue.
+ * miniatura e no preview do estúdio. `example` (opcional) é uma imagem de
+ * referência do estilo; quando existe, substitui a miniatura animada na galeria.
  */
 export const STYLE_GALLERY = [
   /* ── IMAGEM ─────────────────────────────────────────────────────── */
@@ -23,35 +23,35 @@ export const STYLE_GALLERY = [
     send: 'Fotos nítidas do produto e, se houver, da embalagem.',
   },
   {
-    id: 'lifestyle', medium: 'image', name: 'Lifestyle', preview: 'lifestyle',
+    id: 'lifestyle', medium: 'image', example: { thumb: '/assets/examples/lifestyle-thumb.webp', full: '/assets/examples/lifestyle.webp', alt: 'Pacote de café sobre a mesa do café da manhã, com croissant, frutas e uma pessoa segurando a xícara sob luz natural' }, name: 'Lifestyle', preview: 'lifestyle',
     summary: 'O produto em uso, num ambiente real do dia a dia.',
     description: 'Mostra o produto na vida do cliente: na mesa do café, na bolsa, no banheiro, na academia. Gera identificação e funciona muito bem no feed.',
     idealFor: ['Redes sociais', 'Moda e acessórios', 'Casa e decoração', 'Alimentos'],
     send: 'Fotos do produto e uma descrição do ambiente que combina com seu público.',
   },
   {
-    id: 'flat-lay', medium: 'image', name: 'Flat lay', preview: 'flatlay',
+    id: 'flat-lay', medium: 'image', example: { thumb: '/assets/examples/flat-lay-thumb.webp', full: '/assets/examples/flat-lay.webp', alt: 'Fone de ouvido sem fio e estojo vistos de cima, cercados por caixa, celular, cabo, caderno e café' }, name: 'Flat lay', preview: 'flatlay',
     summary: 'Vista de cima, com objetos organizados ao redor.',
     description: 'Composição fotografada de cima para baixo, com itens que contam uma história (ingredientes, acessórios, folhas, tecidos). Visual organizado e muito "instagramável".',
     idealFor: ['Cosméticos e skincare', 'Kits e presentes', 'Gastronomia', 'Papelaria'],
     send: 'Fotos do produto e itens que você quer ver na composição.',
   },
   {
-    id: 'pop-colorido', medium: 'image', name: 'Pop colorido', preview: 'divertido',
+    id: 'pop-colorido', medium: 'image', example: { thumb: '/assets/examples/pop-colorido-thumb.webp', full: '/assets/examples/pop-colorido.webp', alt: 'Anúncio de caixa de som Bluetooth com cores vibrantes, formas gráficas e lista de benefícios' }, name: 'Pop colorido', preview: 'divertido',
     summary: 'Cores vibrantes, formas gráficas e energia.',
     description: 'Fundos saturados, formas geométricas, contrastes ousados e muita personalidade. Para chamar atenção na rolagem e falar com público jovem.',
     idealFor: ['Promoções e lançamentos', 'Público jovem', 'Delivery e fast food', 'Apps'],
     send: 'Fotos do produto e as cores da sua marca.',
   },
   {
-    id: 'tech-neon', medium: 'image', name: 'Futurista / neon', preview: 'futurista',
+    id: 'tech-neon', medium: 'image', example: { thumb: '/assets/examples/tech-neon-thumb.webp', full: '/assets/examples/tech-neon.webp', alt: 'Notebook gamer com teclado iluminado em cenário de cidade futurista com luzes neon' }, name: 'Futurista / neon', preview: 'futurista',
     summary: 'Luzes neon, grades digitais e clima tecnológico.',
     description: 'Ambientação sci-fi com luz azul e violeta, reflexos e elementos digitais. Comunica inovação e tecnologia.',
     idealFor: ['Eletrônicos e gadgets', 'Games', 'Software e startups', 'Eventos tech'],
     send: 'Fotos do produto ou logo em boa resolução.',
   },
   {
-    id: 'retrato-pro', medium: 'image', name: 'Retrato profissional', preview: 'retrato',
+    id: 'retrato-pro', medium: 'image', example: { thumb: '/assets/examples/retrato-pro-thumb.webp', full: '/assets/examples/retrato-pro.webp', alt: 'Retrato profissional de homem de blazer em escritório com luz de fim de tarde' }, name: 'Retrato profissional', preview: 'retrato',
     summary: 'Sua foto com qualidade de ensaio, para marca pessoal.',
     description: 'Retratos com luz e enquadramento de estúdio a partir das suas fotos, com cenário corporativo, criativo ou ao ar livre. Só fazemos com fotos da própria pessoa, enviadas por ela.',
     idealFor: ['LinkedIn e currículo', 'Palestrantes e consultores', 'Perfil profissional', 'Autopromoção'],
