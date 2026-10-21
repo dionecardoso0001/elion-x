@@ -9,14 +9,14 @@
 export const STYLE_GALLERY = [
   /* ── IMAGEM ─────────────────────────────────────────────────────── */
   {
-    id: 'still-estudio', medium: 'image', name: 'Still de estúdio', preview: 'minimalista',
+    id: 'still-estudio', medium: 'image', example: { thumb: '/assets/examples/still-estudio-thumb.webp', full: '/assets/examples/still-estudio.webp', alt: 'Fone de ouvido preto e dourado sozinho em fundo branco, com luz suave de estúdio' }, name: 'Still de estúdio', preview: 'minimalista',
     summary: 'O produto sozinho, em fundo limpo e luz de estúdio.',
     description: 'A foto clássica de catálogo: fundo neutro (branco, cinza ou na cor da marca), sombra suave e o produto como único protagonista. Passa confiança e mostra cada detalhe.',
     idealFor: ['Loja virtual e marketplace', 'Catálogo e cardápio', 'Anúncio de preço'],
     send: 'Fotos do produto de frente, de lado e em detalhe, com boa luz.',
   },
   {
-    id: 'luxo-editorial', medium: 'image', name: 'Editorial de luxo', preview: 'cinematico',
+    id: 'luxo-editorial', medium: 'image', example: { thumb: '/assets/examples/luxo-editorial-thumb.webp', full: '/assets/examples/luxo-editorial.webp', alt: 'Frasco de perfume e caixa sobre mármore escuro com detalhes dourados, seda e luz dramática' }, name: 'Editorial de luxo', preview: 'cinematico',
     summary: 'Luz dramática, fundos escuros, mármore, seda e reflexos.',
     description: 'Estética de revista de moda: contraste alto, brilho controlado e materiais nobres no cenário. Faz o produto parecer mais caro e desejável.',
     idealFor: ['Perfumes', 'Joias e relógios', 'Cosméticos premium', 'Bebidas'],
