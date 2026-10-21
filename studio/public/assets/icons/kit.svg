@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="b" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff7fd9"/><stop offset=".55" stop-color="#c14dff"/><stop offset="1" stop-color="#6a3cff"/></linearGradient>
+    <linearGradient id="l" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffa6ea"/><stop offset="1" stop-color="#d45cff"/></linearGradient>
+    <linearGradient id="r" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7ef0ff"/><stop offset="1" stop-color="#2f8bff"/></linearGradient>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+  </defs>
+  <rect x="22" y="58" width="84" height="54" rx="10" fill="url(#b)"/>
+  <rect x="16" y="42" width="96" height="22" rx="8" fill="url(#l)"/>
+  <rect x="16" y="42" width="96" height="10" rx="5" fill="url(#g)"/>
+  <rect x="56" y="42" width="16" height="70" fill="url(#r)"/>
+  <path d="M64 42c-6-14-26-18-26-6 0 8 16 7 26 6zM64 42c6-14 26-18 26-6 0 8-16 7-26 6z" fill="url(#r)"/>
+  <path d="M100 14l3 8 8 3-8 3-3 8-3-8-8-3 8-3z" fill="#ffe27a"/>
+  <path d="M22 18l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" fill="#7ef0ff"/>
+</svg>

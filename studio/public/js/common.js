@@ -107,12 +107,61 @@
     });
   }
 
+  /* ── Ícones 3D: flutuam sempre; com o mouse, inclinam e reluzem ── */
+  const ICONS = {
+    'vender-produto': ['webp', '120, 110, 255'], autopromocao: ['webp', '255, 190, 80'], lancamento: ['webp', '200, 110, 255'],
+    evento: ['webp', '255, 90, 200'], institucional: ['webp', '80, 150, 255'],
+    foto: ['svg', '90, 150, 255'], video: ['svg', '170, 90, 255'], kit: ['svg', '230, 90, 230'],
+    vertical: ['svg', '80, 200, 255'], quadrado: ['svg', '150, 110, 255'], horizontal: ['svg', '80, 170, 255'],
+  };
+  let iconBase = '/assets/icons/';
+  let iconCount = 0;
+  function icon3d(name, { size = 56 } = {}) {
+    const [ext, glow] = ICONS[name] || ICONS.foto;
+    const src = `${iconBase}${name}.${ext}`;
+    const body = h('span', { class: 'i3-body' }, h('img', { src, alt: '', width: size, height: size, loading: 'lazy', decoding: 'async' }), h('span', { class: 'i3-glare' }), h('span', { class: 'i3-shine' }));
+    const el = h('span', { class: 'icon3d', 'aria-hidden': 'true' }, body);
+    el.style.setProperty('--size', `${size}px`);
+    el.style.setProperty('--glow', glow);
+    el.style.setProperty('--mask', `url("${src}")`);
+    el.style.setProperty('--delay', `${-(iconCount++ % 7) * 0.6}s`); // cada ícone flutua num tempo diferente
+    return el;
+  }
+
+  /* Um único ouvinte para todos os ícones: inclinação e reflexo seguem o mouse dentro do "host". */
+  function wireIconHosts() {
+    if (reduced || !finePointer) return;
+    let raf = 0, last = null;
+    document.addEventListener('pointermove', e => {
+      last = e;
+      if (!raf) raf = requestAnimationFrame(() => {
+        raf = 0;
+        const host = last.target.closest?.('.icon-host');
+        if (!host) return;
+        const r = host.getBoundingClientRect();
+        const px = (last.clientX - r.left) / r.width, py = (last.clientY - r.top) / r.height;
+        host.querySelectorAll('.icon3d').forEach(i => {
+          i.style.setProperty('--ry', `${((px - 0.5) * 34).toFixed(1)}deg`);
+          i.style.setProperty('--rx', `${((0.5 - py) * 28).toFixed(1)}deg`);
+          i.style.setProperty('--gx', `${(px * 100).toFixed(0)}%`);
+          i.style.setProperty('--gy', `${(py * 100).toFixed(0)}%`);
+        });
+      });
+    }, { passive: true });
+    document.addEventListener('pointerout', e => {
+      const host = e.target.closest?.('.icon-host');
+      if (!host || host.contains(e.relatedTarget)) return;
+      host.querySelectorAll('.icon3d').forEach(i => { i.style.setProperty('--ry', '0deg'); i.style.setProperty('--rx', '0deg'); });
+    });
+  }
+
   const fmtSize = b => b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
 
-  window.Studio = { h, api, brl, magnetic, tilt, reveal, fmtDate, fmtSize, prepareImage, upload, reduced, finePointer };
+  window.Studio = { h, api, brl, magnetic, tilt, reveal, fmtDate, fmtSize, prepareImage, upload, icon3d, setIconBase: b => { iconBase = b; }, reduced, finePointer };
 
   document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.magnetic').forEach(el => magnetic(el));
+    wireIconHosts();
     const y = document.getElementById('year'); if (y) y.textContent = new Date().getFullYear();
     reveal();
   });

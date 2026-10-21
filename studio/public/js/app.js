@@ -1,16 +1,17 @@
 /* Landing: galeria de estilos, pacotes e o pedido (wizard com preview ao vivo e fotos). */
 (() => {
-  const { h, api, brl, tilt, magnetic, reveal, prepareImage, upload } = window.Studio;
+  const { h, api, brl, tilt, magnetic, reveal, prepareImage, upload, icon3d } = window.Studio;
   const $ = s => document.querySelector(s);
 
   const GOALS = {
-    'vender-produto': ['🛍️', 'Vender um produto', 'Oferta clara e chamada para compra'],
-    autopromocao: ['🌟', 'Me promover', 'Marca pessoal, portfólio, autoridade'],
-    lancamento: ['🚀', 'Lançamento', 'Gerar expectativa para algo novo'],
-    evento: ['🎟️', 'Divulgar evento', 'Data, local e motivo para ir'],
-    institucional: ['🏢', 'Institucional', 'Apresentar a empresa com credibilidade'],
+    'vender-produto': ['vender-produto', 'Vender um produto', 'Oferta clara e chamada para compra'],
+    autopromocao: ['autopromocao', 'Me promover', 'Marca pessoal, portfólio, autoridade'],
+    lancamento: ['lancamento', 'Lançamento', 'Gerar expectativa para algo novo'],
+    evento: ['evento', 'Divulgar evento', 'Data, local e motivo para ir'],
+    institucional: ['institucional', 'Institucional', 'Apresentar a empresa com credibilidade'],
   };
-  const FORMATS = { '9:16': ['📱', 'Vertical 9:16', 'Reels, TikTok, Shorts, Stories'], '1:1': ['⬛', 'Quadrado 1:1', 'Feed do Instagram e Facebook'], '16:9': ['🖥️', 'Horizontal 16:9', 'YouTube, site, TV'] };
+  const FORMATS = { '9:16': ['vertical', 'Vertical 9:16', 'Reels, TikTok, Shorts, Stories'], '1:1': ['quadrado', 'Quadrado 1:1', 'Feed do Instagram e Facebook'], '16:9': ['horizontal', 'Horizontal 16:9', 'YouTube, site, TV'] };
+  const KIND_ICON = { photo: 'foto', video: 'video', bundle: 'kit' };
   const MEDIUM = { video: 'Estilo do vídeo', image: 'Estilo das imagens' };
   const STEP_NAMES = ['Objetivo', 'Pacote', 'Estilo', 'Briefing', 'Fotos', 'Entrega'];
   const MAX_PHOTOS = 8;
@@ -91,8 +92,9 @@
     renderGallery('image');
 
     $('#packages').replaceChildren(...packages.map(p => {
-      const card = h('article', { class: `card pkg reveal${p.featured ? ' featured' : ''}` },
+      const card = h('article', { class: `card pkg reveal icon-host${p.featured ? ' featured' : ''}` },
         p.featured ? h('span', { class: 'badge' }, 'Mais pedido') : null,
+        icon3d(KIND_ICON[p.kind], { size: 84 }),
         h('h3', {}, p.name),
         h('p', { class: 'tag' }, p.tagline),
         h('div', { class: 'price' }, brl(p.priceCents), h('small', {}, 'no Pix')),
@@ -106,7 +108,7 @@
     reveal($('#packages'));
     $('#packages').querySelectorAll('.btn').forEach(b => magnetic(b, 0.15));
 
-    renderChoices('#pkg-choices', 'packageId', Object.fromEntries(packages.map(p => [p.id, [p.kind === 'photo' ? '📸' : p.kind === 'bundle' ? '🧰' : '🎞️', p.name, brl(p.priceCents)]])), v => selectPackage(v));
+    renderChoices('#pkg-choices', 'packageId', Object.fromEntries(packages.map(p => [p.id, [KIND_ICON[p.kind], p.name, brl(p.priceCents)]])), v => selectPackage(v));
     $('#addons').replaceChildren(...addons.map(a => h('label', { class: 'addon' },
       h('input', { type: 'checkbox', value: a.id, onchange: e => toggleAddon(a.id, e.target.checked) }),
       h('div', {}, h('b', {}, a.name), h('small', {}, a.description)),
@@ -140,9 +142,9 @@
     const name = `c-${key}`;
     $(sel).replaceChildren(...Object.entries(map).map(([value, [ico, title, sub]]) => {
       const id = `${name}-${value.replace(/[^a-z0-9]/gi, '')}`;
-      return h('div', { class: 'choice' },
+      return h('div', { class: 'choice icon-host' },
         h('input', { type: 'radio', name, id, value, checked: state[key] === value, onchange: () => (onPick ? onPick(value) : (state[key] = value, onChange(key))) }),
-        h('label', { for: id }, h('span', { class: 'ico', 'aria-hidden': 'true' }, ico), h('b', {}, title), h('small', {}, sub)),
+        h('label', { for: id }, icon3d(ico, { size: key === 'goal' ? 76 : 62 }), h('b', {}, title), h('small', {}, sub)),
       );
     }));
   }
@@ -403,6 +405,8 @@
     dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('over'); addPhotos([...e.dataTransfer.files].filter(f => f.type.startsWith('image/'))); });
 
     document.querySelectorAll('.tabs [role="tab"]').forEach(t => {
+      t.classList.add('icon-host');
+      t.prepend(icon3d(t.dataset.medium === 'video' ? 'video' : 'foto', { size: 30 }));
       t.addEventListener('click', () => state.catalog && renderGallery(t.dataset.medium));
       t.addEventListener('keydown', e => {
         if (!['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
