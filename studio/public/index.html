@@ -13,10 +13,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Sora:wght@400;600;700&display=swap">
-  <link rel="preload" as="image" href="/assets/logo-head.webp">
+  <link rel="preload" as="image" href="/assets/intro/f001.webp">
   <link rel="stylesheet" href="/css/studio.css">
   <script src="/js/common.js" defer></script>
   <script src="/js/neural.js" defer></script>
+  <script src="/js/intro.js" defer></script>
   <script src="/js/app.js" defer></script>
 </head>
 <body>
@@ -39,6 +40,24 @@
 </header>
 
 <main id="main">
+  <!-- ABERTURA: vídeo guiado pela rolagem -->
+  <section class="intro" id="intro" aria-label="Abertura da Advanced Tech TI" data-frames="/assets/intro/f" data-count="150">
+    <div class="intro-stage">
+      <canvas class="intro-bg" aria-hidden="true"></canvas>
+      <canvas class="intro-fg" role="img" aria-label="Animação: o logo da Advanced Tech TI se desmonta em um robô e se transforma no fundador"></canvas>
+      <video class="intro-video" src="/assets/intro/intro.mp4" poster="/assets/intro/f001.webp" controls muted playsinline preload="metadata" width="406" height="720"></video>
+      <div class="intro-shade" aria-hidden="true"></div>
+      <div class="intro-captions">
+        <div class="intro-cap" data-from="-1" data-to=".2"><span class="eyebrow"><span class="dot"></span>Advanced Tech TI · Studio IA</span><strong>Toda marca começa com uma ideia.</strong></div>
+        <div class="intro-cap" data-from=".24" data-to=".46"><strong>A IA desmonta o comum…</strong></div>
+        <div class="intro-cap" data-from=".5" data-to=".7"><strong>…e reconstrói com precisão de máquina.</strong></div>
+        <div class="intro-cap" data-from=".76" data-to="1.1"><strong>No fim, quem aparece <span class="grad-text">é você.</span></strong><span class="intro-sub">Propaganda em vídeo e foto, feita com IA e entregue pronta.</span><a class="btn btn-primary" href="#estilos">Ver estilos</a></div>
+      </div>
+      <div class="intro-progress" aria-hidden="true"><i></i></div>
+      <p class="intro-hint" aria-hidden="true">Role para assistir <span>↓</span></p>
+    </div>
+  </section>
+
   <!-- HERO -->
   <section class="hero" aria-labelledby="hero-title">
     <canvas id="neural" aria-hidden="true"></canvas>

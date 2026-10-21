@@ -618,3 +618,47 @@ fieldset.step legend { padding: 0; }
 .choice-thumb.screen { width: 100%; height: auto; aspect-ratio: 16 / 10; border: 0; border-radius: 8px; box-shadow: none; }
 .mini-frame { display: grid; place-items: center; width: 100%; aspect-ratio: 4 / 3; border-radius: 14px; border: 1px solid var(--line); background: radial-gradient(circle at 50% 40%, rgba(47, 107, 255, .22), transparent 70%), rgba(4, 7, 20, .55); }
 .mini-frame .screen.mini { height: 82%; }
+
+/* ══ Abertura: vídeo guiado pela rolagem ═══════════════════════════════ */
+.intro { position: relative; background: #000; }
+.intro-stage { position: relative; display: grid; place-items: center; padding: var(--s7) 16px; }
+.intro-video { max-height: 80vh; width: auto; max-width: 100%; border-radius: var(--r-md); box-shadow: 0 30px 80px -20px rgba(47, 107, 255, .5); }
+.intro-bg, .intro-fg, .intro-shade, .intro-captions, .intro-progress, .intro-hint { display: none; }
+
+/* modo rolagem (ligado pelo intro.js) */
+.intro--scrub { height: 420vh; }
+.intro--scrub .intro-stage { position: sticky; top: 0; height: 100vh; height: 100svh; padding: 0; overflow: hidden; display: block; }
+.intro--scrub .intro-video { display: none; }
+.intro--scrub .intro-bg, .intro--scrub .intro-fg, .intro--scrub .intro-shade, .intro--scrub .intro-captions, .intro--scrub .intro-progress, .intro--scrub .intro-hint { display: block; }
+.intro-bg, .intro-fg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.intro-bg { filter: blur(26px) brightness(.5) saturate(1.35); transform: scale(1.2); }
+.intro-shade {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 70% 90% at 50% 50%, transparent 55%, rgba(4, 7, 20, .55) 100%),
+    linear-gradient(180deg, transparent 75%, var(--bg) 100%);
+}
+.intro-captions { position: absolute; inset: 0; pointer-events: none; }
+.intro-cap {
+  --o: 0;
+  position: absolute; left: max(16px, 5vw); top: 50%;
+  width: min(420px, calc(50vw - 30vh - 7vw));
+  display: grid; gap: var(--s3); justify-items: start;
+  opacity: var(--o); visibility: hidden;
+  transform: translateY(calc(-50% + (1 - var(--o)) * 26px));
+}
+.intro-cap.vis { visibility: visible; }
+.intro-cap.on { pointer-events: auto; }
+.intro-cap strong { font-family: var(--f-display); font-size: clamp(1.5rem, 1rem + 2vw, 2.8rem); line-height: 1.12; text-shadow: 0 4px 30px rgba(0, 0, 0, .7); text-wrap: balance; }
+.intro-sub { color: var(--muted); font-size: var(--t-lg); text-shadow: 0 2px 16px rgba(0, 0, 0, .8); }
+.intro-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255, 255, 255, .08); }
+.intro-progress i { display: block; height: 100%; background: var(--grad); transform-origin: left; transform: scaleX(0); }
+.intro-hint { position: absolute; left: 50%; bottom: max(28px, env(safe-area-inset-bottom, 0px)); translate: -50% 0; margin: 0; font-size: var(--t-xs); letter-spacing: .2em; text-transform: uppercase; color: rgba(255, 255, 255, .8); }
+.intro-hint span { display: inline-block; animation: bob 1.4s ease-in-out infinite; }
+@keyframes bob { 50% { transform: translateY(5px); } }
+
+/* tela estreita ou retrato: legendas embaixo, centralizadas, sobre degradê */
+@media (max-aspect-ratio: 5/4), (max-width: 900px) {
+  .intro-cap { left: 50%; top: auto; bottom: 14vh; width: min(560px, calc(100vw - 32px)); justify-items: center; text-align: center; transform: translate(-50%, calc((1 - var(--o)) * 26px)); }
+  .intro-shade { background: radial-gradient(ellipse 80% 70% at 50% 40%, transparent 50%, rgba(4, 7, 20, .5) 100%), linear-gradient(180deg, transparent 45%, rgba(4, 7, 20, .85) 88%, var(--bg) 100%); }
+}
