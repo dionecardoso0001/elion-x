@@ -123,7 +123,8 @@
     const el = h('span', { class: 'icon3d', 'aria-hidden': 'true' }, body);
     el.style.setProperty('--size', `${size}px`);
     el.style.setProperty('--glow', glow);
-    el.style.setProperty('--mask', `url("${src}")`);
+    // URL absoluta: url() relativo dentro de variável CSS seria resolvido a partir do .css
+    el.style.setProperty('--mask', `url("${new URL(src, document.baseURI).href}")`);
     el.style.setProperty('--delay', `${-(iconCount++ % 7) * 0.6}s`); // cada ícone flutua num tempo diferente
     return el;
   }
