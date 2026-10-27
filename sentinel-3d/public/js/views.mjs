@@ -73,16 +73,17 @@ function overview(app, root) {
     const [c9, s9] = card('Incidentes por agência', `${app.agencies.length} agência monitorada`); cards.push(c9);
     body.replaceChildren(...cards.filter(Boolean));
     lineChart(s1, { series: [{ name: 'Disponibilidade', color: '#22c55e', points: s.series.map((p) => ({ t: p.t, v: p.availabilityPct, synthetic: p.synthetic })) }], unit: '%', yMax: 100 });
-    lineChart(s2, { series: [{ name: 'Potência', color: '#f59e0b', points: s.series.map((p) => ({ t: p.t, v: p.kw, synthetic: p.synthetic })) }], unit: 'kW', yMin: 0, empty: 'Sem leitura confiável do medidor no período.' });
-    lineChart(s3, { series: [{ name: 'Banda WAN', color: '#38bdf8', points: s.series.map((p) => ({ t: p.t, v: p.wanMbps, synthetic: p.synthetic })) }], unit: 'Mbps', yMin: 0 });
+    lineChart(s2, { series: [{ name: 'Potência', color: '#f59e0b', points: s.series.map((p) => ({ t: p.t, v: p.kw, synthetic: p.synthetic })) }], unit: 'kW', yMin: 0, empty: s.restricted ? 'Medidor em área restrita: visível apenas aos perfis Operador/Administrador.' : 'Sem leitura confiável do medidor no período.' });
+    lineChart(s3, { series: [{ name: 'Banda WAN', color: '#38bdf8', points: s.series.map((p) => ({ t: p.t, v: p.wanMbps, synthetic: p.synthetic })) }], unit: 'Mbps', yMin: 0, empty: s.restricted ? 'Roteador em área restrita: visível apenas aos perfis Operador/Administrador.' : 'Sem dados no período.' });
     barChart(s4, Object.entries(s.eventsByCategory).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ label: app.meta.categories[k]?.label ?? (k === 'simulacao' ? 'Simulação (demo)' : k), value: v, color: CAT_COLORS[k] })));
     timeBars(s5, s.incidentsOverTime, { bucketMs: s.period.bucketMs, since: s.period.since, until: s.period.until });
     barChart(s6, ['critical', 'high', 'medium', 'low'].filter((k) => s.bySeverity[k]).map((k) => ({ label: { critical: 'Crítica', high: 'Alta', medium: 'Média', low: 'Baixa' }[k], value: s.bySeverity[k], color: SEV_COLORS[k] })));
     barChart(s7, s.recurrent.map((r) => ({ label: r.id, value: r.n, color: '#f97316' })), { empty: 'Nenhuma reincidência no período.' });
-    const a = s.upsTrend.analysis;
+    if (!s.upsTrend) { s8.append(h('div', { class: 'locked-box', text: 'Nobreaks em área restrita: visível apenas aos perfis Operador/Administrador.' })); }
+    const a = s.upsTrend?.analysis;
     const proj = a?.projection ? [{ t: s.upsTrend.series.at(-1).t + a.projection.daysToThreshold * 86400000, v: a.projection.threshold }] : [];
-    lineChart(s8, { series: [{ name: 'Saúde da bateria', color: '#eab308', points: s.upsTrend.series.map((p) => ({ ...p, synthetic: true })) }, ...(proj.length ? [{ name: 'Projeção linear', color: '#ef4444', points: [{ ...s.upsTrend.series.at(-1) }, ...proj] }] : [])], unit: '%' });
-    s8.append(h('p', { class: 'row-sub', text: a?.projection ? `Inclinação ${a.slopePerDay.toFixed(3)} p.p./dia · R² ${a.r2.toFixed(2)} · ~${Math.round(a.projection.daysToThreshold)} dias até 80%, se a tendência linear se mantiver.` : `Sem projeção: ${a?.reason ?? 'dados insuficientes'}.` }));
+    if (s.upsTrend) lineChart(s8, { series: [{ name: 'Saúde da bateria', color: '#eab308', points: s.upsTrend.series.map((p) => ({ ...p, synthetic: true })) }, ...(proj.length ? [{ name: 'Projeção linear', color: '#ef4444', points: [{ ...s.upsTrend.series.at(-1) }, ...proj] }] : [])], unit: '%' });
+    if (s.upsTrend) s8.append(h('p', { class: 'row-sub', text: a?.projection ? `Inclinação ${a.slopePerDay.toFixed(3)} p.p./dia · R² ${a.r2.toFixed(2)} · ~${Math.round(a.projection.daysToThreshold)} dias até 80%, se a tendência linear se mantiver.` : `Sem projeção: ${a?.reason ?? 'dados insuficientes'}.` }));
     barChart(s9, Object.entries(s.incidentsByAgency).map(([k, v]) => ({ label: app.agencies.find((x) => x.id === k)?.name ?? k, value: v, color: '#22d3ee' })));
     if (s.seriesStart && s.period.since < s.seriesStart) c1.querySelector('.sub').textContent += ` · série disponível desde ${fmtTime(s.seriesStart, true)}`;
   };

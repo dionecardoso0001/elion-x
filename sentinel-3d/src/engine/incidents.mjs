@@ -8,8 +8,9 @@ const SEV_RANK = { low: 0, medium: 1, high: 2, critical: 3 };
 // antes de virar incidente, porque dispositivos de uma mesma cadeia ficam "antigos" em instantes
 // ligeiramente diferentes (jitter de coleta). Sem isso, o dependente abriria um incidente
 // duplicado segundos antes de a correlação identificar o componente compartilhado.
-// O mesmo vale para "porta inativa" no switch a montante: é indicador antecipado de falha a jusante.
-export const HOLD_MS = { cascade: 0, power: 0, fire: 0, inferred: 8000, 'port-down': 10000, offline: 10000, unknown: 10000, default: 3000 };
+// O mesmo vale para "porta inativa" no switch a montante (indicador antecipado de falha a jusante)
+// e para anomalias estatísticas, que exigem persistência por serem ruidosas por natureza.
+export const HOLD_MS = { cascade: 0, power: 0, fire: 0, thermal: 0, failover: 10000, inferred: 8000, anomaly: 10000, 'port-down': 10000, offline: 10000, unknown: 10000, default: 3000 };
 export const holdFor = (kind) => HOLD_MS[kind] ?? HOLD_MS.default;
 
 export class IncidentManager {
@@ -37,6 +38,15 @@ export class IncidentManager {
       seenKeys.add(g.key);
       const dx = diagnoses.get(g.key);
       let inc = this.incidents.find((i) => i.key === g.key && i.status !== 'resolvido');
+      if (!inc && g.kind !== 'single') {
+        // a causa raiz (ou um membro) já tinha incidente individual: promove-o em vez de abrir outro
+        const singles = [g.root, ...g.members].map((id) => 'single:' + id);
+        inc = singles.map((k) => this.incidents.find((i) => i.key === k && i.status !== 'resolvido')).find(Boolean);
+        if (inc) {
+          inc.key = g.key;
+          inc.timeline.push({ ts: now, type: 'correlacionado', text: `Correlacionado (${g.kind}): sinais relacionados agrupados neste incidente` });
+        }
+      }
       if (!inc) {
         const seen = this.pending.get(g.key) ?? now;
         this.pending.set(g.key, seen);
@@ -78,6 +88,7 @@ export class IncidentManager {
         inc.severity = dx.severity; inc.priority = dx.priority;
       }
       inc.title = dx.title;
+      inc.kind = dx.kind;
       inc.diagnosis = dx;
       if (JSON.stringify([inc.deviceIds, inc.severity, inc.diagnosis?.confidence, inc.status]) !== before) {
         inc.updatedAt = now; changed.push(inc);

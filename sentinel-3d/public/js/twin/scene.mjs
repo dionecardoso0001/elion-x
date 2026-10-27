@@ -6,12 +6,13 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { kpiText } from '../util.mjs';
 import { createMaterials, buildAgency, buildFurniture, buildDevice, markerTexture, selectionTexture } from './builders.mjs';
 
 const STATUS_COLORS = { ok: '#22c55e', degraded: '#eab308', critical: '#ef4444', offline: '#9ca3af', maintenance: '#3b82f6', unknown: '#a855f7' };
-const EDGE_COLORS = { network: 0x22d3ee, poe: 0x38bdf8, power: 0xf59e0b, 'data-path': 0xa855f7, supervision: 0x94a3b8 };
+const EDGE_COLORS = { network: 0x22d3ee, poe: 0x38bdf8, power: 0xf59e0b, 'data-path': 0xa855f7, supervision: 0x94a3b8, cooling: 0x7dd3fc };
 const SEV_COLORS = { critical: 0xef4444, high: 0xf97316, medium: 0xeab308, low: 0x94a3b8 };
-const CENTER = new THREE.Vector3(16, 0, 11);
+const CENTER = new THREE.Vector3(18, 0, 10); // recalculado a partir da planta em build()
 const EYE = 1.65;
 const PLAYER_R = 0.28;
 const TRAY_Y = 3.0;
@@ -46,6 +47,7 @@ export class TwinScene {
     this.scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x1a1f26, 0.55));
     const sun = new THREE.DirectionalLight(0xfff1dc, 2.1);
     sun.position.set(30, 40, 30); sun.target.position.copy(CENTER);
+    this.sun = sun;
     sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
     Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 22, bottom: -22, near: 5, far: 110 });
     sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
@@ -112,9 +114,29 @@ export class TwinScene {
   }
 
   // ---------- construção ----------
-  build(layout, devices, deps, { hideRestricted }) {
+  async build(layout, devices, deps, { hideRestricted, logoUrl = null }) {
     this.layout = layout;
     this.roomsById = new Map(layout.rooms.map((r) => [r.id, r]));
+    const { x: BX, z: BZ } = layout.bounds;
+    this.bounds = { BX, BZ };
+    this.center = new THREE.Vector3(BX / 2, 0, BZ / 2);
+    this.orbit.target.copy(this.center);
+    this.sun.position.set(BX / 2 + 14, 40, BZ / 2 + 20); this.sun.target.position.copy(this.center);
+    Object.assign(this.sun.shadow.camera, { left: -BX / 2 - 4, right: BX / 2 + 4, top: BZ / 2 + 6, bottom: -BZ / 2 - 6 });
+    this.sun.shadow.camera.updateProjectionMatrix();
+    this.interior.position.set(BX / 2, 2.9, BZ / 2);
+    // porta principal = maior vão da fachada
+    const facade = layout.walls.find((w) => w.a[1] === BZ && w.b[1] === BZ);
+    const door = (facade?.doors || []).slice().sort((a, b) => b.w - a.w)[0];
+    this.entry = { x: door?.at ?? BX / 2, z: BZ + 3 };
+    let logo = null;
+    if (logoUrl) {
+      try {
+        logo = await new THREE.TextureLoader().loadAsync(logoUrl);
+        logo.colorSpace = THREE.SRGBColorSpace;
+        this.logoAspect = logo.image.width / logo.image.height;
+      } catch { logo = null; }
+    }
     const ag = buildAgency(layout, this.mats, { hideRestricted });
     this.agency = ag;
     this.scene.add(ag.group);
@@ -122,21 +144,22 @@ export class TwinScene {
 
     for (const item of layout.furniture) {
       if (hideRestricted && this.roomAt(item.x, item.z)?.restricted) continue;
-      const { group, collider } = buildFurniture(item, this.mats);
+      const { group, collider } = buildFurniture(item.kind === 'brandwall' && logo ? { ...item, logo, logoAspect: this.logoAspect } : item, this.mats);
       this.scene.add(group);
       if (collider) this.colliders.push(collider);
     }
 
     // rótulos de ambientes
     this.roomLabels = [];
-    layout.rooms.forEach((r, i) => {
+    layout.rooms.forEach((r) => {
       const el = document.createElement('div');
       const locked = hideRestricted && r.restricted;
-      el.className = `room-label${r.restricted ? ' restricted' : ''}${locked ? ' locked' : ''}`;
-      const num = document.createElement('span'); num.className = 'num'; num.textContent = String(i + 1).padStart(2, '0');
+      // numeração e cores conforme a legenda do mapa conceitual (06 = suporte técnico em azul)
+      el.className = `room-label${r.num ? '' : ' minor'}${r.tech ? ' tech' : ''}${locked ? ' locked' : ''}`;
+      if (r.num) { const num = document.createElement('span'); num.className = 'num'; num.textContent = r.num; el.append(num); }
       const txt = document.createElement('span'); txt.textContent = locked ? `${r.short ?? r.name} · restrito` : (r.short ?? r.name);
-      el.title = r.name;
-      el.append(num, txt);
+      el.title = `${r.name} — ${r.desc ?? ''}`;
+      el.append(txt);
       const obj = new CSS2DObject(el);
       obj.position.set((r.x0 + r.x1) / 2, layout.bounds.wallHeight + 0.4, (r.z0 + r.z1) / 2);
       this.scene.add(obj);
@@ -151,6 +174,7 @@ export class TwinScene {
       this.scene.add(m); this.roomOverlays.set(r.id, m);
     }
 
+    this.metricsOn = false;
     for (const d of devices) this.addDevice(d);
     this.buildDeps(deps);
     this.setMode('aerial');
@@ -190,7 +214,13 @@ export class TwinScene {
     const label = new CSS2DObject(labelEl); label.position.copy(marker.position); label.visible = false;
     this.scene.add(label);
 
-    this.devices.set(d.id, { device: d, group, marker, selRing, effect, label, labelEl, markerY, status: 'unknown', pulse: Math.random() * 6 });
+    // chip de desempenho (camada "Desempenho"): KPI principal do equipamento em tempo real
+    const kpiEl = document.createElement('div');
+    kpiEl.className = 'kpi-chip';
+    const kpi = new CSS2DObject(kpiEl); kpi.position.copy(marker.position); kpi.visible = false;
+    this.scene.add(kpi);
+
+    this.devices.set(d.id, { device: d, group, marker, selRing, effect, label, labelEl, kpi, kpiEl, markerY, status: 'unknown', pulse: Math.random() * 6 });
   }
 
   buildDeps(deps) {
@@ -198,7 +228,7 @@ export class TwinScene {
     this.depsHot = new THREE.Group();
     const byType = {};
     for (const e of deps) {
-      if (e.type === 'managed-by') continue; // gerenciamento lógico não é cabo; omitido do traçado
+      if (e.type === 'managed-by' || e.type === 'cooling') continue; // relações lógicas/térmicas não são cabos
       const a = this.devices.get(e.from), b = this.devices.get(e.to);
       if (!a || !b) continue;
       (byType[e.type] ??= []).push(...this.route(a.device.pos, b.device.pos));
@@ -223,7 +253,13 @@ export class TwinScene {
   setStates(devStates, incidents = []) {
     for (const s of devStates) {
       const v = this.devices.get(s.id);
-      if (!v || v.status === s.status) continue;
+      if (!v) continue;
+      if (this.metricsOn) {
+        const stale = ['offline', 'unknown'].includes(s.status);
+        v.kpiEl.textContent = `${s.id} · ${stale ? `sem dados ${Math.round((s.ageMs ?? 0) / 1000)} s` : kpiText(v.device.type, s.values)}`;
+        v.kpiEl.className = `kpi-chip k-${s.status}`;
+      }
+      if (v.status === s.status) continue;
       v.status = s.status;
       v.marker.material.map = markerTexture(s.status, STATUS_COLORS[s.status]);
       v.marker.material.needsUpdate = true;
@@ -260,7 +296,26 @@ export class TwinScene {
   }
 
   updateLabels() {
-    for (const [id, v] of this.devices) v.label.visible = this.labelsOn !== false && (v.status === 'critical' || id === this.selected) && v.marker.visible;
+    for (const [id, v] of this.devices) {
+      v.kpi.visible = !!this.metricsOn && v.marker.visible;
+      v.label.visible = !this.metricsOn && this.labelsOn !== false && (v.status === 'critical' || id === this.selected) && v.marker.visible;
+    }
+  }
+
+  toggleMetrics(on, lastStates) {
+    this.metricsOn = on;
+    if (on && lastStates) this.setStates(lastStates);
+    this.updateLabels();
+  }
+
+  /** Voa até o centro de um ambiente (legenda do mapa de ativos). */
+  flyToRoom(id) {
+    const r = this.roomsById.get(id);
+    if (!r) return;
+    if (this.mode === 'fpv') this.setMode('aerial');
+    const c = new THREE.Vector3((r.x0 + r.x1) / 2, 0, (r.z0 + r.z1) / 2);
+    const span = Math.max(r.x1 - r.x0, r.z1 - r.z0);
+    this.animateTo(c.clone().add(new THREE.Vector3(0, 4 + span * 0.9, 3 + span * 0.7)), c, 1.1);
   }
 
   select(id) {
@@ -313,10 +368,12 @@ export class TwinScene {
     for (const v of this.devices.values()) { v.marker.material.depthTest = mode === 'fpv'; v.selRing.material.depthTest = mode === 'fpv'; }
     for (const l of this.roomLabels) l.visible = aerial && this.labelsOn !== false;
     if (mode === 'fpv') {
-      this.camera.position.set(16, EYE, 26.5);
-      this.camera.lookAt(16, EYE, 10);
+      this.camera.position.set(this.entry.x, EYE, this.entry.z);
+      this.camera.lookAt(this.entry.x, EYE, this.entry.z - 10);
     } else if (!this.tween) {
-      this.animateTo(new THREE.Vector3(16 + 2, 26, 38), CENTER.clone(), 0.9);
+      // vista oblíqua frontal, como o mapa conceitual (fachada embaixo)
+      const c = this.center ?? CENTER;
+      this.animateTo(new THREE.Vector3(c.x, 30, c.z + 24), c.clone(), 0.9);
     }
   }
 
@@ -405,7 +462,7 @@ export class TwinScene {
     if (!this.collides(nx, pos.z)) pos.x = nx;
     const nz = pos.z + delta.z;
     if (!this.collides(pos.x, nz)) pos.z = nz;
-    pos.x = THREE.MathUtils.clamp(pos.x, -4, 36); pos.z = THREE.MathUtils.clamp(pos.z, -4, 31); pos.y = EYE;
+    pos.x = THREE.MathUtils.clamp(pos.x, -4, this.bounds.BX + 4); pos.z = THREE.MathUtils.clamp(pos.z, -4, this.bounds.BZ + 7); pos.y = EYE;
   }
 
   collides(x, z) {
@@ -437,6 +494,11 @@ export class TwinScene {
         v.effect.userData.ring.material.opacity = 0.85 * (1 - k);
         v.effect.userData.beam.material.opacity = 0.25 + 0.2 * Math.sin(t * 5);
       }
+    }
+    // camada Desempenho: em primeira pessoa só os chips próximos (evita poluição através das paredes)
+    if (this.metricsOn) {
+      const range = this.mode === 'fpv' ? 9 : Infinity;
+      for (const v of this.devices.values()) v.kpi.visible = v.marker.visible && this.camera.position.distanceTo(v.marker.position) < range;
     }
     for (const m of this.roomOverlays?.values() || []) if (m.visible) m.material.opacity = reducedMotion ? 0.14 : 0.1 + 0.08 * (0.5 + 0.5 * Math.sin(t * 3));
     this.renderer.render(this.scene, this.camera);

@@ -47,13 +47,17 @@ test('CSRF: mutação sem cabeçalho anti-CSRF é recusada', async () => {
 test('observador: não vê áreas restritas, IP/serial nem IDs restritos em textos', async () => {
   const c = await login('observador');
   const devs = await (await get('/api/devices', c)).json();
-  assert.ok(devs.length > 0 && devs.length < 54);
+  assert.ok(devs.length > 0 && devs.length < srv.platform.devices.length);
   assert.ok(!devs.some((d) => d.id === 'SW-03' || d.id === 'VAULT-01'), 'ativos de sala restrita ocultos');
   assert.ok(devs.every((d) => d.ip === undefined && d.serial === undefined));
   assert.equal((await get('/api/devices/SW-03', c)).status, 404, '404 também para não autorizado');
   assert.equal((await post('/api/scenarios/A/start', c)).status, 403);
   assert.equal((await get('/api/devices/CAM-014/video', c)).status, 403);
   assert.equal((await get('/api/admin/audit', c)).status, 403);
+  // agregados derivados de ativos restritos (medidor, roteador, nobreaks) também não chegam
+  const sum = await (await get('/api/metrics/summary?period=1h', c)).json();
+  assert.ok(sum.series.every((x) => x.kw === null && x.wanMbps === null));
+  assert.equal(sum.upsTrend, null);
 });
 
 test('cenário B via API: observador recebe motivo redigido; operador vê causa raiz', async () => {
@@ -106,4 +110,16 @@ test('assistente via API usa ferramenta tipada e relatório é derivado dos regi
   const rep = await (await get('/api/reports/incidents?period=7d', op)).text();
   assert.match(rep, /MODO DEMONSTRAÇÃO — DADOS SIMULADOS/);
   assert.match(rep, /histórico sintético|SINTÉTICO/i);
+});
+
+test('todos os cenários do simulador são acionáveis pela API (e cenário inexistente → 404)', async () => {
+  const op = await login('operador');
+  const { scenarios } = await (await get('/api/scenarios', op)).json();
+  assert.ok(scenarios.length >= 8);
+  for (const s of scenarios) {
+    assert.equal((await post(`/api/scenarios/${s.id}/start`, op)).status, 200, `start ${s.id}`);
+    assert.equal((await post(`/api/scenarios/${s.id}/stop`, op)).status, 200, `stop ${s.id}`);
+  }
+  assert.equal((await post('/api/scenarios/Z/start', op)).status, 404);
+  assert.equal((await get('/api/brand', op)).status, 200);
 });

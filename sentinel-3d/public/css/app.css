@@ -268,3 +268,48 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
   .disclaimer { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ---------- mapa de ativos (refino conforme o mapa conceitual) ---------- */
+.room-label { border-left: 0; padding: 3px 10px 3px 3px; border-radius: 14px; background: rgba(200, 16, 30, .92); border-color: rgba(255,255,255,.25); box-shadow: 0 2px 8px rgba(0,0,0,.45); }
+.room-label .num { background: #fff; color: #c8101e; width: 20px; height: 20px; font-weight: 800; }
+.room-label.tech { background: rgba(29, 78, 216, .95); }
+.room-label.tech .num { color: #1d4ed8; }
+.room-label.minor { background: rgba(10, 14, 20, .78); padding-left: 8px; font-size: 10px; color: #cbd5e1; }
+.room-label.locked { background: rgba(30, 41, 59, .9); color: #94a3b8; }
+.kpi-chip { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 4px; background: rgba(8, 12, 18, .9); border: 1px solid var(--line-strong); border-left: 3px solid var(--s-ok); color: var(--text); white-space: nowrap; transform: translateY(-24px); }
+.kpi-chip.k-degraded { border-left-color: var(--s-degraded); color: #fde68a; }
+.kpi-chip.k-critical { border-left-color: var(--s-critical); color: #fecaca; }
+.kpi-chip.k-offline { border-left-color: var(--s-offline); color: #d1d5db; }
+.kpi-chip.k-unknown { border-left-color: var(--s-unknown); color: #e9d5ff; }
+.kpi-chip.k-maintenance { border-left-color: var(--s-maintenance); }
+.room-legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.room-legend button { width: 100%; display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; text-align: left; background: none; border: 0; padding: 4px 4px; border-radius: var(--radius-s); cursor: pointer; }
+.room-legend button:hover { background: var(--surface-2); }
+.rnum { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font: 800 12px var(--font); background: #c8101e; color: #fff; }
+.rnum.tech { background: #1d4ed8; }
+.rtxt { display: grid; line-height: 1.25; }
+.rtxt b { font-size: 12px; letter-spacing: .04em; }
+.rtxt small { color: var(--muted); font-size: 11px; }
+.rdot { display: inline-flex; }
+.rdot .ico { width: 16px; height: 16px; }
+.bigstats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.bigstat { display: flex; gap: 7px; align-items: center; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 7px; }
+.bigstat .dot { width: 16px; height: 16px; border-radius: 50%; flex: none; box-shadow: 0 0 10px currentColor; background: currentColor; }
+.bigstat b { display: block; font-size: 11.5px; }
+.bigstat small { color: var(--muted); font-size: 10px; }
+.bigstat.ok { color: var(--s-ok); } .bigstat.warn { color: var(--s-degraded); } .bigstat.crit { color: var(--s-critical); }
+.bigstat b, .bigstat small { color: inherit; } .bigstat small { opacity: .75; }
+.domains { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.domain { display: grid; justify-items: center; gap: 2px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 8px 2px; cursor: pointer; }
+.domain:hover { border-color: var(--cyan); }
+.dom-ico { width: 26px; height: 26px; padding: 5px; border-radius: 50%; border: 2px solid currentColor; box-sizing: content-box; }
+.domain b { font-size: 9.5px; letter-spacing: .04em; color: var(--text); }
+.domain small { font-size: 10.5px; font-weight: 600; }
+.h-ok { color: var(--s-ok); } .h-degraded { color: var(--s-degraded); } .h-critical { color: var(--s-critical); }
+.h-unknown { color: var(--s-unknown); } .h-maintenance { color: var(--s-maintenance); }
+.assets { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.assets summary { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 5px 4px; cursor: pointer; font-size: 12.5px; border-radius: var(--radius-s); list-style: none; }
+.assets summary::-webkit-details-marker { display: none; }
+.assets summary:hover { background: var(--surface-2); }
+.assets .units { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.assets details[open] > ul { margin: 4px 0 8px; }

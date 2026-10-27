@@ -1,7 +1,7 @@
 // Painel contextual (direita): equipamento selecionado, diagnóstico de incidente ou visão resumida.
 
 import { api } from './api.mjs';
-import { h, statusBadge, sevTag, fmtAge, fmtTime, fmtValue, toast, STATUS_ORDER } from './util.mjs';
+import { h, statusBadge, statusIcon, sevTag, fmtAge, fmtTime, fmtValue, toast, kpiText, STATUS_ORDER } from './util.mjs';
 import { sparkline } from './charts.mjs';
 
 // replaceChildren converteria null em texto "null": filtra antes
@@ -20,19 +20,104 @@ export function renderPanel(app, { force = false } = {}) {
   renderOverview(app, el);
 }
 
+// pior estado de um conjunto (ordem de gravidade)
+const worst = (statuses) => statuses.sort((a, b) => STATUS_ORDER.indexOf(a) - STATUS_ORDER.indexOf(b))[0] ?? 'ok';
+const HEALTH = { ok: ['Normal', 'ok'], maintenance: ['Manutenção', 'maintenance'], degraded: ['Atenção', 'degraded'], unknown: ['Sem dados', 'unknown'], offline: ['Falha', 'critical'], critical: ['Falha', 'critical'] };
+
+// ícones dos domínios (SVG simples, 24×24) — mesma leitura do mapa conceitual
+const DOMAIN_ICON = {
+  cftv: 'M3 7h12l4-3v10l-4-3H3zM6 9.5a1.5 1.5 0 1 0 0 .01M5 14h4v5H5z',
+  rede: 'M12 3a2 2 0 1 1 0 4 2 2 0 0 1 0-4zM5 15a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm14 0a2 2 0 1 1 0 4 2 2 0 0 1 0-4zM11 7h2v4h6v4h-2v-2H7v2H5v-4h6z',
+  energia: 'M13 2 4 14h7l-1 8 9-12h-7z',
+  clima: 'M11 2h2v20h-2zM2 11h20v2H2zM4.9 3.5l15.6 15.6-1.4 1.4L3.5 4.9zM19.1 3.5l1.4 1.4L4.9 20.5l-1.4-1.4z',
+  incendio: 'M12 2c1 4 6 6 6 12a6 6 0 0 1-12 0c0-3 2-5 3-6 0 2 1 3 2 3 0-3-1-6 1-9z',
+  seguranca: 'M12 2 4 5v6c0 5 3.5 9.5 8 11 4.5-1.5 8-6 8-11V5z',
+  servidor: 'M4 3h16v5H4zm0 7h16v5H4zm0 7h16v4H4zM6 5h2v1H6zm0 7h2v1H6z',
+  autoatend: 'M5 2h14v20H5zm2 2v7h10V4zm1 10h8v2H8zm0 4h3v2H8z',
+};
+const domainIcon = (id) => h('svg', { svg: true, class: 'dom-ico', viewBox: '0 0 24 24', 'aria-hidden': 'true' }, h('path', { svg: true, d: DOMAIN_ICON[id] ?? DOMAIN_ICON.servidor, fill: 'currentColor' }));
+
 function renderOverview(app, el) {
   const incs = app.live.incidents.slice().sort((a, b) => sevRank(b.severity) - sevRank(a.severity) || b.createdAt - a.createdAt);
-  const bad = [...app.live.devices.values()].filter((d) => d.status !== 'ok').sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status));
+  const live = [...app.live.devices.values()];
+  const statusOf = (id) => app.live.devices.get(id)?.status ?? 'unknown';
+  const bad = live.filter((d) => d.status !== 'ok').sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status));
+  const cnt = (st) => live.filter((d) => st.includes(d.status)).length;
+  const statics = [...app.statics.values()];
+  app.openGroups ??= new Set();
+
+  // 1) Ambientes (legenda numerada do mapa)
+  const rooms = app.layout.rooms.filter((r) => r.num).sort((a, b) => a.num.localeCompare(b.num));
+  const roomSec = h('section', { class: 'ctx-sec' }, h('h3', { text: 'Ambientes' }), h('ul', { class: 'room-legend' }, rooms.map((r) => {
+    const devs = statics.filter((d) => d.room === r.id);
+    const st = devs.length ? worst(devs.map((d) => statusOf(d.id))) : null;
+    const locked = r.restricted && !app.can('read:restricted');
+    return h('li', {}, h('button', { onclick: () => app.flyToRoom(r.id), title: `Ir até ${r.name}` },
+      h('span', { class: `rnum${r.tech ? ' tech' : ''}`, text: r.num }),
+      h('span', { class: 'rtxt' }, h('b', { text: r.name.toUpperCase() }), h('small', { text: locked ? `${r.desc} · acesso restrito` : r.desc })),
+      st && !locked ? h('span', { class: `rdot s-${st}`, title: app.meta.statuses[st].label }, statusIcon(st)) : null));
+  })));
+
+  // 2) Status dos equipamentos (legenda do mapa: Online / Instável / Offline)
+  const big = (label, sub, n, cls) => h('div', { class: `bigstat ${cls}` }, h('span', { class: 'dot' }), h('div', {}, h('b', { text: `${label} · ${n}` }), h('small', { text: sub })));
+  const statusSec = h('section', { class: 'ctx-sec' }, h('h3', { text: 'Status dos equipamentos' }),
+    h('div', { class: 'bigstats' }, big('ONLINE', 'Operando normalmente', cnt(['ok']), 'ok'), big('INSTÁVEL', 'Atenção necessária', cnt(['degraded']), 'warn'), big('OFFLINE', 'Fora de operação', cnt(['critical', 'offline']), 'crit')),
+    h('p', { class: 'row-sub', text: `Sem dados confiáveis: ${cnt(['unknown'])} · Manutenção: ${cnt(['maintenance'])} · ${live.length} visíveis ao perfil` }));
+
+  // 3) Monitoramento geral por domínio
+  const domSec = h('section', { class: 'ctx-sec' }, h('h3', { text: 'Monitoramento geral' }), h('div', { class: 'domains' }, app.layout.monitorDomains.map((dm) => {
+    const devs = statics.filter((d) => dm.categories.includes(d.category));
+    if (!devs.length) return null;
+    const [txt, cls] = HEALTH[worst(devs.map((d) => statusOf(d.id)))];
+    return h('button', { class: `domain h-${cls}`, title: `Filtrar ${dm.label} no 3D`, onclick: () => { app.setCategoryFilter(dm.categories); app.go('twin'); } },
+      domainIcon(dm.id), h('b', { text: dm.label.toUpperCase() }), h('small', { text: txt }));
+  })));
+
+  // 4) Mapa de ativos (grupos e contagens do mapa conceitual)
+  const assetSec = h('section', { class: 'ctx-sec' }, h('h3', { text: 'Mapa de ativos' }), h('ul', { class: 'assets' }, app.layout.assetGroups.map((g) => {
+    const devs = statics.filter((d) => g.types.includes(d.type));
+    const st = devs.length ? worst(devs.map((d) => statusOf(d.id))) : null;
+    const det = h('details', { open: app.openGroups.has(g.id) || null, ontoggle: (e) => { if (e.target.open) app.openGroups.add(g.id); else app.openGroups.delete(g.id); } },
+      h('summary', {}, h('span', { text: g.label }), h('span', { class: 'units', text: `${devs.length} unidade${devs.length === 1 ? '' : 's'}` }),
+        st ? h('span', { class: `rdot s-${st}`, title: app.meta.statuses[st].label }, statusIcon(st)) : h('span', { class: 'row-sub', text: 'restrito' })),
+      h('ul', { class: 'list' }, devs.map((d) => { const l = app.live.devices.get(d.id); return h('li', {}, h('button', { onclick: () => app.select(d.id) },
+        h('div', { class: 'row-top' }, h('span', { class: 'mono', text: d.id }), statusBadge(l?.status ?? 'unknown', app.meta.statuses[l?.status ?? 'unknown'].label)),
+        h('div', { class: 'row-sub', text: `${d.name} · ${['offline', 'unknown'].includes(l?.status) ? 'sem dados recentes' : kpiText(d.type, l?.values)}` }))); })));
+    return h('li', {}, det);
+  })));
+
+  // 5) Desempenho — indicadores-chave ao vivo
+  const perfRow = (label, id, fmt) => {
+    const l = app.live.devices.get(id);
+    if (!l) return null;
+    const stale = ['offline', 'unknown'].includes(l.status);
+    return [h('dt', { text: label }), h('dd', { class: { critical: 'bad', offline: 'bad', degraded: 'warn', unknown: 'warn' }[l.status] ?? '', text: stale ? `sem dados (${fmtAge(l.ageMs)})` : fmt(l.values) })];
+  };
+  const recCams = ['NVR-01', 'NVR-02'].reduce((a, id) => a + (app.live.devices.get(id)?.values?.channelsRecording ?? 0), 0);
+  const totalCams = statics.filter((d) => d.type === 'camera').length;
+  const perfSec = h('section', { class: 'ctx-sec' }, h('h3', {}, h('span', { text: 'Desempenho' }), h('span', { class: 'pill synthetic', text: 'simulado' })),
+    h('dl', { class: 'kv' },
+      perfRow('Link WAN principal', 'RTR-01', (v) => `${v.latencyMs} ms · ${v.bandwidthMbps} Mb/s`),
+      perfRow('Link secundário (4G)', 'RTR-02', (v) => `${v.bandwidthMbps > 5 ? 'ATIVO' : 'standby'} · ${v.latencyMs} ms`),
+      app.live.devices.has('NVR-01') ? [h('dt', { text: 'Câmeras gravando' }), h('dd', { class: recCams < totalCams ? 'warn' : '', text: `${recCams} de ${totalCams}` })] : null,
+      perfRow('Host de virtualização', 'SRV-01', (v) => `CPU ${v.cpuPct}% · ${v.tempC} °C`),
+      perfRow('Temperatura dos racks', 'TH-01', (v) => `${v.tempC} °C`),
+      perfRow('Climatização', 'HVAC-01', (v) => (v.running ? `insuflamento ${v.supplyTempC} °C` : 'parada')),
+      perfRow('Potência (QDG)', 'MTR-01', (v) => `${v.kW} kW · ${v.voltageV} V`),
+      perfRow('Autonomia UPS-01', 'UPS-01', (v) => (v.onBattery ? `EM BATERIA · ${v.runtimeMin} min` : `rede · ${v.runtimeMin} min disponíveis`)),
+    ));
+
   fill(el,
-    h('div', { class: 'ctx-head' }, h('div', {}, h('h2', { text: 'Situação operacional' }), h('div', { class: 'sub', text: 'Selecione um equipamento no 3D, na planta ou nas listas.' }))),
+    h('div', { class: 'ctx-head' }, h('div', {}, h('h2', { text: 'Mapa de ativos · visão operacional' }), h('div', { class: 'sub', text: 'Estados calculados pela telemetria (simulada). Clique para navegar.' }))),
     h('section', { class: 'ctx-sec' }, h('h3', {}, h('span', { text: 'Incidentes ativos' }), h('span', { class: `badge ${incs.length ? '' : 'zero'}`, text: incs.length })),
       incs.length ? h('ul', { class: 'list' }, incs.map((i) => h('li', {}, h('button', { onclick: () => app.selectIncident(i.id) },
         h('div', { class: 'row-top' }, h('strong', { text: i.title }), sevTag(i.severity)),
         h('div', { class: 'row-sub', text: `${i.id} · ${STATUS_TXT[i.status]} · ${fmtAge(Date.now() - i.createdAt)}` }))))) : h('p', { class: 'empty', text: 'Nenhum incidente ativo.' })),
-    h('section', { class: 'ctx-sec' }, h('h3', { text: 'Equipamentos fora do normal' }),
-      bad.length ? h('ul', { class: 'list' }, bad.slice(0, 30).map((d) => { const s = app.statics.get(d.id); return h('li', {}, h('button', { onclick: () => app.select(d.id) },
+    statusSec, domSec, roomSec, assetSec, perfSec,
+    bad.length ? h('section', { class: 'ctx-sec' }, h('h3', { text: 'Equipamentos fora do normal' }),
+      h('ul', { class: 'list' }, bad.slice(0, 30).map((d) => { const st = app.statics.get(d.id); return h('li', {}, h('button', { onclick: () => app.select(d.id) },
         h('div', { class: 'row-top' }, h('strong', { text: `${d.id}` }), statusBadge(d.status, app.meta.statuses[d.status].label)),
-        h('div', { class: 'row-sub', text: `${s?.name ?? ''} — ${d.reasons[0]?.text ?? ''}` }))); })) : h('p', { class: 'empty', text: 'Todos os equipamentos visíveis estão operacionais.' })),
+        h('div', { class: 'row-sub', text: `${st?.name ?? ''} — ${d.reasons[0]?.text ?? ''}` }))); }))) : null,
   );
 }
 

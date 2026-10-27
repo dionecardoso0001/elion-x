@@ -107,6 +107,46 @@ export function diagnose(group, ctx) {
         ],
       };
     }
+    case 'failover': {
+      const backups = group.witnesses || [];
+      const bw = backups.map((id) => { const v = latest.get(id)?.values || {}; return `${name(id)}: ${v.bandwidthMbps ?? '—'} Mbps, latência ${v.latencyMs ?? '—'} ms`; });
+      return {
+        ...base, kind: 'failover', severity: backups.length ? 'high' : 'critical', priority: backups.length ? 'P2' : 'P1',
+        title: backups.length ? `Queda do link principal ${group.root} — tráfego em failover para ${backups.join(', ')}` : `Queda de link ${group.root} sem caminho redundante`,
+        facts: [`${name(group.root)} — última comunicação há ${age(group.root)}`, ...bw, ...group.members.filter((m) => m !== group.root).flatMap(reasonsOf)],
+        hypothesis: `Indisponibilidade do link ou do equipamento ${group.root} (operadora, cabo ou alimentação). A redundância está ${backups.length ? 'mantendo' : 'NÃO está mantendo'} a conectividade.`,
+        recommendations: [
+          `Abrir chamado com a operadora do link de ${group.root} e verificar alimentação/cabeamento local`,
+          'Acompanhar latência e consumo do link secundário (4G pode ter franquia e desempenho inferior)',
+          'Após o retorno, confirmar o retorno do tráfego ao link principal',
+        ],
+        uncertainties: ['A falha pode ser na operadora ou no equipamento local; a telemetria disponível não distingue'],
+      };
+    }
+    case 'thermal': {
+      const heating = group.members.filter((m) => m !== group.root);
+      const temps = heating.map((id) => { const v = latest.get(id)?.values?.tempC; return `${name(id)}: ${v ?? '—'} °C`; });
+      const supply = latest.get(group.root)?.values?.supplyTempC;
+      return {
+        ...base, kind: 'thermal',
+        severity: group.members.some((id) => states.get(id)?.status === 'critical') ? 'high' : 'medium',
+        priority: group.members.some((id) => states.get(id)?.status === 'critical') ? 'P2' : 'P3',
+        title: `Degradação térmica — ${group.root} (${room}) com ${heating.length} equipamento(s) aquecendo`,
+        facts: [
+          ...reasonsOf(group.root),
+          supply != null ? `Temperatura de insuflamento atual: ${supply} °C` : 'Temperatura de insuflamento indisponível',
+          ...temps,
+          ...heating.flatMap(reasonsOf),
+        ],
+        hypothesis: `Perda de rendimento da climatização ${group.root} (filtro obstruído, falta de gás ou falha do compressor) elevando a temperatura da zona de racks.`,
+        recommendations: [
+          `Acionar manutenção de climatização para inspecionar ${group.root}`,
+          'Acompanhar a tendência de temperatura dos servidores; se atingir o limite crítico, planejar desligamento ordenado de cargas não essenciais',
+          'Verificar ventilação provisória da sala de racks',
+        ],
+        uncertainties: ['A causa mecânica exata não é observável pela telemetria disponível', 'Carga computacional atípica também eleva a temperatura dos servidores'],
+      };
+    }
     case 'inferred':
       return {
         ...base, kind: 'inferred', severity: 'medium', priority: 'P3',

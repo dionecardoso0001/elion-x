@@ -14,7 +14,9 @@
 | RF04 | Correlação por grafo de dependências e supressão de duplicatas | `src/engine/correlation.mjs` |
 | RF05 | Diagnóstico explicável: fatos, hipótese, confiança por critérios, recomendações, incertezas | `src/engine/diagnostics.mjs` |
 | RF06 | Incidentes: criação, agrupamento, reconhecimento, normalização, resolução com evidência, escalonamento | `src/engine/incidents.mjs` |
-| RF07 | Simulador com cenários A–E acionáveis e encerráveis pela interface | `src/engine/simulator.mjs` |
+| RF07 | Simulador com cenários A–H acionáveis e encerráveis pela interface | `src/engine/simulator.mjs` |
+| RF12 | Planta e inventário conforme o "Mapa de Ativos · Visão Conceitual" (ambientes 01–08, contagens por grupo) | `src/domain/twin.mjs` (`ASSET_GROUPS`, `MONITOR_DOMAINS`) |
+| RF13 | Painel "Mapa de ativos" ao vivo (status, monitoramento geral, ambientes, ativos, desempenho) e camada 3D "Desempenho" | `public/js/panel.mjs`, `twin/scene.mjs` |
 | RF08 | Dashboard com KPIs, gráficos filtráveis (período, categoria, agência, criticidade), linha do tempo | `public/js/views.mjs` |
 | RF09 | Assistente operacional com ferramentas tipadas e escopo do perfil | `src/engine/assistant.mjs` |
 | RF10 | RBAC, áreas restritas, auditoria, retenção configurável | `src/security/auth.mjs`, `server.mjs` |
@@ -118,7 +120,10 @@ Separação de falhas: física (limiar reportado pelo dispositivo), de comunica�
 
 - Dependências **conhecidas** são cadastradas; relações **inferidas** (irmãos falhando com pai sadio) são rotuladas como inferência e recebem confiança baixa.
 - Confiança é **qualitativa** (alta/média/baixa, ou "requer confirmação humana" para incêndio) e sempre acompanhada dos critérios que a sustentam. Não há percentuais.
-- **Hold-down:** sinais isolados de perda de comunicação (10 s), porta inativa (10 s), relações inferidas (8 s) e demais sinais isolados (3 s) precisam persistir antes de virar incidente. Grupos de cascata, energia e incêndio são imediatos. Isso eliminou incidentes transitórios observados em teste (dependente ou porta a montante detectados antes do componente compartilhado). Há teste de regressão para os dois casos.
+- **Hold-down:** sinais isolados de perda de comunicação (10 s), porta inativa (10 s), anomalia estatística (10 s), failover (10 s), relações inferidas (8 s) e demais sinais isolados (3 s) precisam persistir antes de virar incidente. Cascata, energia, incêndio e térmico são imediatos. Isso eliminou incidentes transitórios observados em teste (dependente ou porta a montante detectados antes do componente compartilhado). Há teste de regressão para os casos.
+- **Promoção de incidente:** quando um grupo correlacionado se forma e a causa raiz (ou um membro) já tinha incidente individual aberto, esse incidente é **promovido** (nova chave, linha do tempo "correlacionado") em vez de abrir outro. Exemplo: climatização degrada primeiro e, segundos depois, a sala aquece; continua um único incidente.
+- **Redundância:** arestas `redundant` (dois links WAN) só quebram o caminho de dados se **todos** os pais redundantes caírem. Grupo `failover`: link fora do ar + irmão absorvendo tráfego = um incidente; o surto estatístico no link de backup é tratado como consequência.
+- **Térmico:** arestas `cooling` (zona de arrefecimento da climatização) agrupam a climatização fora da faixa com equipamentos/sensores aquecendo.
 
 ## 8. IA generativa (nível 3) — guardrails para quando for ativada
 
@@ -134,7 +139,7 @@ Separação de falhas: física (limiar reportado pelo dispositivo), de comunica�
 | Spoofing | Sessão com cookie HttpOnly/SameSite=Strict; token Bearer separado para gateway | IdP corporativo + MFA; mTLS no gateway |
 | Tampering | Validação estrita da ingestão; escrita atômica dos incidentes | Assinatura das leituras na origem |
 | Repudiation | Auditoria de sessão, leitura sensível, vídeo, cenários, ack/resolve, negações | Log WORM centralizado (SIEM) |
-| Information disclosure | RBAC no servidor; áreas restritas ocultas; IP/serial só com `read:sensitive`; IDs restritos redigidos em textos e eventos; 404 para não autorizado | Criptografia em repouso; proteção de plantas por agência |
+| Information disclosure | RBAC no servidor; áreas restritas ocultas; IP/serial só com `read:sensitive`; IDs restritos redigidos em textos e eventos; agregados derivados de ativos restritos (energia, banda WAN, nobreaks) ocultos ao observador; 404 para não autorizado | Criptografia em repouso; proteção de plantas por agência |
 | DoS | Limite de payload (16 KB / 256 KB ingestão), máximo de 500 leituras por lote, SSE limitado | Rate limit por IP/token; WAF |
 | Elevation | Permissões por ação; nenhum comando físico existe na API | Revisão de segurança independente |
 
@@ -142,11 +147,26 @@ Cabeçalhos: CSP (`script-src 'self'` + hash do import map, sem `unsafe-inline`)
 
 **A plataforma não possui, por projeto, nenhum endpoint de atuação física**: armar/desarmar alarme, abrir cofre, liberar porta ou desligar equipamento.
 
-## 10. Critérios de aceitação do MVP
+## 10. Aderência ao mapa conceitual
+
+| Elemento do mapa | Implementação |
+|---|---|
+| Ambientes 01–08 (numeração, nomes, descrições; 06 em azul) | `ROOMS` com `num`, `desc`, `tech`; rótulos 3D, legenda do painel e planta 2D |
+| Disposição: 06 e 07 nos fundos, 01 à esquerda com parede vermelha de ATMs, 04 central, 02/03 à frente, 05/08 à direita via corredor, vestíbulo envidraçado | Planta 36 × 20 m em `twin.mjs` |
+| Status Online / Instável / Offline | Painel "Status dos equipamentos" (Offline = falha crítica + desconectado). Os 6 estados da especificação continuam no 3D |
+| Monitoramento geral: CFTV, Rede, Energia, Climatização, Incêndio | `MONITOR_DOMAINS` (+ Segurança, Servidores, Autoatendimento) com Normal/Atenção/Falha ao vivo |
+| Mapa de ativos com contagens | `ASSET_GROUPS`; teste automatizado garante 12 / 2 / 6 / 2 / 2 / 4 / 3 / 4 / 1 |
+| Câmera da Área Restrita vermelha, cofre amarelo | Cenário F reproduz exatamente esse estado |
+| Logotipo Santander | Somente com ativo oficial autorizado em `public/brand/logo.png`; sem ele, placa neutra |
+| **Câmera dentro dos sanitários** | **Não reproduzida** (LGPD/privacidade): CAM-022 fica no corredor de acesso |
+
+## 11. Critérios de aceitação do MVP
 
 | Critério | Verificação |
 |---|---|
-| Cenários A–E produzem o estado e o incidente esperados | `test/engine.test.mjs` (automatizado) |
+| Cenários A–H produzem o estado e o incidente esperados | `test/engine.test.mjs` (automatizado) |
+| Inventário igual ao mapa; nenhuma câmera em sanitário; todo ativo dentro do seu ambiente | `test/engine.test.mjs` |
+| Todos os cenários acionáveis pela API | `test/api.test.mjs` |
 | Sem incidentes duplicados/transitórios no cenário B | teste de regressão (falha sem a correção) |
 | Observador não vê ativos, IP/serial ou IDs restritos | `test/api.test.mjs` |
 | CSRF, sessão, CSP, ingestão autenticada | `test/api.test.mjs` |

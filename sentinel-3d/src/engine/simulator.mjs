@@ -43,7 +43,23 @@ export const SCENARIOS = {
     description: 'Somente o gateway GW-IOT-01 para de comunicar; sensores atrás dele ficam sem dados.',
     expected: ['GW-IOT-01 desconectado', 'Sensores em "sem dados confiáveis" (roxo), não em falha', 'Últimas leituras preservadas com idade'],
   },
+  F: {
+    id: 'F', label: 'Estado do mapa conceitual', target: 'CAM-020',
+    description: 'Reproduz o mapa de ativos fornecido: câmera da Área Restrita offline e cofre com alimentação do controlador instável.',
+    expected: ['CAM-020 desconectada', 'VAULT-01 instável (status lógico)', 'Demais ativos operacionais'],
+  },
+  G: {
+    id: 'G', label: 'Queda do link principal', target: 'RTR-01',
+    description: 'O link WAN principal cai; o tráfego migra para o link secundário 4G (latência maior). A redundância mantém a rede.',
+    expected: ['RTR-01 desconectado', 'RTR-02 assume a banda com latência maior', 'Firewall e rede interna seguem operacionais (redundância)'],
+  },
+  H: {
+    id: 'H', label: 'Degradação térmica', target: 'HVAC-01',
+    description: 'A climatização do Suporte Técnico perde rendimento; temperaturas sobem gradualmente em ~60 s até cruzar limiares.',
+    expected: ['HVAC-01 instável (insuflamento quente)', 'TH-01 e servidores aquecendo progressivamente', 'Um incidente térmico com causa raiz provável HVAC-01'],
+  },
 };
+const THERMAL_RAMP_MS = 60_000;
 
 export class Simulator {
   constructor({ devices, deps, seed = 42 }) {
@@ -61,6 +77,9 @@ export class Simulator {
     this.ups['UPS-02'].health = this.healthSeries.at(-1).v;
     this.gatewayChildren = deps.filter((e) => e.from === 'GW-IOT-01' && e.type === 'data-path').map((e) => e.to);
     this.sw03Children = deps.filter((e) => e.from === 'SW-03' && e.type === 'poe').map((e) => e.to);
+    // canais gravados por NVR = câmeras dos switches que cada um atende
+    const poeOf = (sw) => deps.filter((e) => e.from === sw && e.type === 'poe' && e.to.startsWith('CAM-')).length;
+    this.nvrChannels = { 'NVR-01': poeOf('SW-01'), 'NVR-02': poeOf('SW-02') + poeOf('SW-03') };
     this.lastTick = null;
   }
 
@@ -82,6 +101,8 @@ export class Simulator {
     if (this.active.has('B')) { s.add('SW-03'); this.sw03Children.forEach((c) => s.add(c)); }
     if (this.active.has('C')) ['ATM-01', 'ATM-02', 'ATM-03', 'ATM-04', 'TOT-01'].forEach((c) => s.add(c));
     if (this.active.has('E')) { s.add('GW-IOT-01'); this.gatewayChildren.forEach((c) => s.add(c)); }
+    if (this.active.has('F')) s.add('CAM-020');
+    if (this.active.has('G')) s.add('RTR-01');
     return s;
   }
 
@@ -91,9 +112,11 @@ export class Simulator {
     const r1 = (x) => Math.round(x * 10) / 10;
     switch (d.type) {
       case 'camera': return { videoOk: true, tamper: false, fps: Math.round(this.n(15, 0.4)), bitrateKbps: Math.round(this.n(2048, 120)), packetLossPct: r1(Math.abs(this.n(0, 0.2))), latencyMs: Math.round(this.n(12, 2.5)), recording: true };
-      case 'nvr': return { storageUsedPct: r1(71.3 + (t % 86400000) / 86400000 * 0.4), channelsRecording: 12, cpuPct: Math.round(this.n(35, 4)) };
+      case 'nvr': return { storageUsedPct: r1(71.3 + (t % 86400000) / 86400000 * 0.4), channelsRecording: this.nvrChannels[d.id] ?? 0, cpuPct: Math.round(this.n(35, 4)) };
       case 'vms': return { cpuPct: Math.round(this.n(40, 5)), memPct: Math.round(this.n(62, 2)), servicesOk: true };
-      case 'router': return { wanUp: true, latencyMs: Math.round(this.n(28, 3)), packetLossPct: r1(Math.abs(this.n(0, 0.08))), bandwidthMbps: r1(this.n(42 + 15 * day, 3)), cpuPct: Math.round(this.n(22, 3)) };
+      case 'router': return d.id === 'RTR-02' // link secundário em standby: só keepalive
+        ? { wanUp: true, latencyMs: Math.round(this.n(62, 6)), packetLossPct: r1(Math.abs(this.n(0, 0.15))), bandwidthMbps: r1(Math.abs(this.n(0.4, 0.1))), cpuPct: Math.round(this.n(9, 2)) }
+        : { wanUp: true, latencyMs: Math.round(this.n(28, 3)), packetLossPct: r1(Math.abs(this.n(0, 0.08))), bandwidthMbps: r1(this.n(42 + 15 * day, 3)), cpuPct: Math.round(this.n(22, 3)) };
       case 'firewall': return { cpuPct: Math.round(this.n(30 + 6 * day, 3)), memPct: Math.round(this.n(55, 2)), sessions: Math.round(this.n(1200 + 300 * day, 60)) };
       case 'switch': return { cpuPct: Math.round(this.n(12, 2)), tempC: r1(this.n(41, 0.6)), portsUp: d.id === 'SW-CORE-01' ? 22 : 6, portsDownUnexpected: 0, ifErrorsPerMin: Math.round(Math.abs(this.n(0, 1))), poeBudgetPct: Math.round(this.n(45, 1.5)) };
       case 'ap': return { clients: Math.max(0, Math.round(this.n(18 + 8 * day, 3))), channelUtilPct: Math.round(this.n(35, 5)) };
@@ -119,14 +142,31 @@ export class Simulator {
     }
   }
 
-  applyScenarios(d, v) {
+  applyScenarios(d, v, now) {
     const A = this.active;
     if (A.has('A') && d.id === 'CAM-018') Object.assign(v, { videoOk: false, fps: 0, bitrateKbps: 0, recording: false });
     if (A.has('B')) {
       if (d.id === 'SW-CORE-01') Object.assign(v, { portsUp: v.portsUp - 1, portsDownUnexpected: 1 });
-      if (d.type === 'nvr') v.channelsRecording -= this.sw03Children.length;
+      if (d.id === 'NVR-02') v.channelsRecording -= this.sw03Children.length;
     }
-    if (A.has('A') && d.type === 'nvr') v.channelsRecording -= 1;
+    if (A.has('A') && d.id === 'NVR-02') v.channelsRecording -= 1;
+    if (A.has('F')) {
+      if (d.id === 'NVR-02') v.channelsRecording -= 1;
+      if (d.id === 'VAULT-01') v.powerOk = false;
+    }
+    if (A.has('G') && d.id === 'RTR-02') Object.assign(v, { latencyMs: Math.round(this.n(95, 8)), bandwidthMbps: Math.round(this.n(38, 3) * 10) / 10, cpuPct: Math.round(this.n(46, 4)) });
+    if (A.has('H')) {
+      const el = now - A.get('H').startedAt;
+      const kHvac = Math.min(1, el / 20_000);                              // insuflamento esquenta primeiro
+      const k = Math.min(1, Math.max(0, el - 15_000) / THERMAL_RAMP_MS);  // inércia térmica do ambiente
+      const r1 = (x) => Math.round(x * 10) / 10;
+      if (d.id === 'HVAC-01') v.supplyTempC = r1(v.supplyTempC + 9 * kHvac);
+      if (d.id === 'TH-01') v.tempC = r1(v.tempC + 11 * k);
+      if (d.id === 'TH-02') v.tempC = r1(v.tempC + 7 * k);
+      if (d.id === 'SRV-01') v.tempC = r1(v.tempC + 30 * k);
+      if (d.id === 'STG-01') v.tempC = r1(v.tempC + 20 * k);
+      if (d.id === 'NVR-01' || d.id === 'NVR-02') v.cpuPct = Math.round(v.cpuPct + 15 * k);
+    }
     if (A.has('C')) {
       if (d.type === 'meter') Object.assign(v, { voltageV: 0, currentA: 0, kW: 0 }), delete v.pf;
       if (d.type === 'ups') {
@@ -161,7 +201,7 @@ export class Simulator {
       const iv = TYPES[d.type].intervalMs;
       this.nextDue.set(d.id, now + iv * (0.85 + this.rng() * 0.2));
       if (silent.has(d.id)) continue;
-      const values = this.applyScenarios(d, this.normalValues(d, now));
+      const values = this.applyScenarios(d, this.normalValues(d, now), now);
       out.push({ deviceId: d.id, sourceTs: now - Math.round(this.rng() * 150), values });
     }
     return out;

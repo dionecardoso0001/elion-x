@@ -87,7 +87,13 @@ function evaluateDevice(device, parentEdges, states, reading, now, flag, anomaly
   if (stale) {
     // Regra central: telemetria antiga NUNCA vira "operacional".
     // Se o caminho de comunicação caiu, não sabemos o estado físico → "sem dados confiáveis".
-    const brokenPath = parentEdges.filter((e) => ['offline', 'unknown'].includes(states.get(e.from)?.status));
+    const down = (e) => ['offline', 'unknown'].includes(states.get(e.from)?.status);
+    // caminhos redundantes (ex.: dois links WAN) só contam como quebrados se TODOS caírem
+    const redundant = parentEdges.filter((e) => e.redundant);
+    const brokenPath = [
+      ...parentEdges.filter((e) => !e.redundant && down(e)),
+      ...(redundant.length && redundant.every(down) ? redundant : []),
+    ];
     if (brokenPath.length) {
       return {
         ...base, status: 'unknown', impactedBy: brokenPath.map((e) => e.from),

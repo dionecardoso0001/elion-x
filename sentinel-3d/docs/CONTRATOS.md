@@ -48,7 +48,7 @@ Métricas desconhecidas são descartadas (`dropped`) e a leitura passa a ter qua
 | POST | `/api/incidents/:id/resolve` | incident:resolve | `{ note }` (≥ 5 caracteres; só após normalização) |
 | GET | `/api/events?limit&category` | read:twin | eventos |
 | GET | `/api/metrics/summary?period=15m\|1h\|6h\|24h\|7d&category&severity` | read:twin | dados dos gráficos |
-| GET/POST | `/api/scenarios`, `/api/scenarios/:A-E\|all/start\|stop` | scenario:run | simulador |
+| GET/POST | `/api/scenarios`, `/api/scenarios/:A-H\|all/start\|stop` | scenario:run | simulador |
 | POST | `/api/assistant` | assistant:use | `{ q }` → `{ intent, tool, text, items, diagnosis, actions, source }` |
 | GET | `/api/reports/incidents?period=today\|7d` | read:incidents | relatório Markdown |
 | GET | `/api/connectors` | read:twin | matriz de conectores e estado em execução |

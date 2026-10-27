@@ -3,14 +3,14 @@
 > **MODO DEMONSTRAÇÃO — DADOS SIMULADOS.** Planta e inventário fictícios. Nenhum equipamento físico está conectado,
 > e a planta não representa a arquitetura de nenhuma agência real. Não está pronto para produção.
 
-Gêmeo digital 3D de uma agência bancária demonstrativa com monitoramento de CFTV, rede, servidores, energia, alarmes e incêndio. O núcleo é um motor de regras, correlação por grafo de dependências e diagnóstico explicável (fatos, hipótese, confiança por critérios, recomendações e incertezas).
+Gêmeo digital 3D de uma agência bancária demonstrativa, com planta, numeração de ambientes e inventário seguindo o **Mapa de Ativos · Visão Conceitual** fornecido, com monitoramento de CFTV, rede, servidores, energia, alarmes e incêndio. O núcleo é um motor de regras, correlação por grafo de dependências e diagnóstico explicável (fatos, hipótese, confiança por critérios, recomendações e incertezas).
 
 ## Executar
 ```bash
 cd sentinel-3d
 npm install        # única dependência: three@0.185.1
 npm start          # http://127.0.0.1:8730
-npm test           # 23 testes: motor, cenários A–E, regressão, API, autorização
+npm test           # 28 testes: motor, cenários A–H, aderência ao mapa, regressões, API, autorização
 ```
 Requer Node.js ≥ 20. A sessão inicia como **Operador NOC**; troque o perfil no topo.
 
@@ -31,7 +31,7 @@ Os dados de execução (incidentes, eventos, auditoria) ficam em `sentinel-3d/da
 6. Perfil **Observador**: áreas restritas trancadas e ocorrência redigida.
 
 ## O que foi verificado
-- `npm test`: **23/23** aprovados, incluindo os testes de regressão que **falham sem a correção** de incidentes transitórios.
+- `npm test`: **28/28** aprovados, incluindo testes de regressão que **falham sem a correção** de incidentes transitórios.
 - Chromium (Playwright), em todos os modos de navegação, nas 12 seções e na troca de perfil: **sem erros de console**.
 - FPS: **não verificado em GPU real.** O ambiente de desenvolvimento só tem renderização por software (1–5 FPS). A interface mostra o FPS medido na máquina do operador.
 
@@ -46,7 +46,8 @@ Os dados de execução (incidentes, eventos, auditoria) ficam em `sentinel-3d/da
 - Autenticação de demonstração; produção exige IdP corporativo com MFA.
 - Nível 3 de IA por templates determinísticos; integração com LLM desativada (guardrails em ARQUITETURA §8).
 - Uma agência; a comparação entre agências exige ao menos duas cadastradas.
-- Logotipo: nenhum ativo de marca foi usado. A identidade visual oficial só pode entrar com ativos autorizados.
+- Logotipo: nenhum ativo de marca foi usado. Para exibi-lo, coloque o arquivo oficial autorizado em `public/brand/logo.png` (ver `public/brand/README.md`).
+- O mapa conceitual mostra uma câmera dentro dos sanitários; isso **não** foi reproduzido (privacidade/LGPD). A câmera fica no corredor de acesso.
 - Descarga do UPS acelerada 30× e recarga instantânea ao encerrar o cenário C (simplificação de demonstração).
 
 ## Implantação e rollback (proposta)

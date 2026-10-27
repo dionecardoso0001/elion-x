@@ -55,6 +55,24 @@ export function correlate({ devices, deps, states }) {
     });
   }
 
+  // 2b) Térmico — climatização fora do normal com equipamentos/sensores da sua zona aquecendo.
+  const hot = (id) => states.get(id)?.reasons?.some((r) => /^(stat:)?tempC/.test(r.code));
+  for (const hvac of abnormal.filter((id) => byId.get(id).type === 'hvac' && !claimed.has(id) && ['degraded', 'critical'].includes(st(id)))) {
+    const zone = children.get(hvac).filter((e) => e.type === 'cooling').map((e) => e.to);
+    const heating = zone.filter((id) => hot(id) && !claimed.has(id));
+    if (!heating.length) continue;
+    [hvac, ...heating].forEach((id) => claimed.add(id));
+    groups.push({
+      key: 'thermal:' + hvac, kind: 'thermal', root: hvac, members: [hvac, ...heating], relation: 'conhecida',
+      confidence: heating.length >= 2 ? 'alta' : 'média',
+      criteria: [
+        `${hvac} reporta condição fora da faixa (evidência direta)`,
+        `${heating.length} equipamento(s)/sensor(es) da zona de arrefecimento com temperatura acima da faixa ou da linha de base`,
+        'Relação de arrefecimento cadastrada (conhecida)',
+      ],
+    });
+  }
+
   // 3) Cascata — dispositivo observável mais alto na cadeia com dependentes sem dados.
   //    Processa raízes cujo próprio estado foi OBSERVADO (offline/critical), nunca "unknown".
   const roots = abnormal.filter((id) => !claimed.has(id) && ['offline', 'critical'].includes(st(id)));
@@ -80,12 +98,33 @@ export function correlate({ devices, deps, states }) {
     });
   }
 
+  // 3b) Failover — link redundante fora do ar; o(s) irmão(s) redundante(s) assumem o tráfego.
+  for (const root of abnormal.filter((id) => !claimed.has(id) && ['offline', 'critical'].includes(st(id)))) {
+    const redChildren = children.get(root).filter((e) => e.redundant).map((e) => e.to);
+    if (!redChildren.length) continue;
+    const siblings = [...new Set(redChildren.flatMap((c) => parents.get(c).filter((e) => e.redundant && e.from !== root).map((e) => e.from)))];
+    const siblingsUp = siblings.filter((id) => !['offline', 'unknown'].includes(st(id)));
+    const affected = siblings.filter((id) => ABNORMAL.has(st(id)) && !claimed.has(id));
+    const protectedOk = redChildren.every((c) => st(c) === 'ok');
+    [root, ...affected].forEach((id) => claimed.add(id));
+    groups.push({
+      key: 'failover:' + root, kind: 'failover', root, members: [root, ...affected], witnesses: siblingsUp, relation: 'conhecida',
+      confidence: siblingsUp.length && protectedOk ? 'alta' : 'média',
+      criteria: [
+        `${root} sem comunicação (estado observado: ${st(root)})`,
+        siblingsUp.length ? `Caminho redundante ativo: ${siblingsUp.join(', ')}` : 'Nenhum caminho redundante ativo',
+        protectedOk ? `${redChildren.join(', ')} segue(m) operacional(is): redundância efetiva` : `${redChildren.join(', ')} também afetado(s)`,
+        ...(affected.length ? [`Sinais no(s) link(s) redundante(s) decorrentes da migração de tráfego: ${affected.join(', ')}`] : []),
+      ],
+    });
+  }
+
   // 4) Relação INFERIDA — irmãos com falha cujo pai comum não reporta problema.
   const remaining = abnormal.filter((id) => !claimed.has(id));
   const bySharedParent = new Map();
   for (const id of remaining) {
     for (const e of parents.get(id)) {
-      if (!['poe', 'network', 'data-path', 'supervision'].includes(e.type)) continue;
+      if (!['poe', 'network', 'data-path', 'supervision', 'cooling'].includes(e.type)) continue;
       if (!bySharedParent.has(e.from)) bySharedParent.set(e.from, []);
       bySharedParent.get(e.from).push(id);
     }

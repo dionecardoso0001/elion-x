@@ -21,7 +21,9 @@
 - **Transparente:** paredes translúcidas, tetos ocultos e cabos/dependências visíveis.
 - **Planta 2D:** alternativa leve e acessível por teclado (Tab + Enter).
 - **Dependências:** mostra os cabos lógicos (ciano = rede/PoE, âmbar = energia, roxo = gateway, cinza = supervisão).
+- **Desempenho:** mostra sobre cada equipamento o seu indicador principal ao vivo (fps da câmera, latência/banda do link, CPU e temperatura de servidores, carga/autonomia do nobreak, kW do quadro, temperatura dos sensores). Em primeira pessoa, só os equipamentos a até 9 m.
 - **Ampliar:** o gêmeo ocupa quase toda a tela.
+- **Painel "Mapa de ativos"** (direita, sem seleção): status Online/Instável/Offline, monitoramento geral por domínio (clique filtra o 3D), ambientes 01–08 (clique voa até o ambiente), mapa de ativos com contagens (expanda para ver cada equipamento) e indicadores de desempenho.
 - **Ir até no 3D** (painel, alerta, assistente ou timeline): a câmera voa até o equipamento.
 
 ## Tratando um incidente
@@ -38,6 +40,9 @@
 | C — Problema elétrico | MTR-01 crítico, UPS em bateria com autonomia caindo (acelerada 30×), terminais sem energia |
 | D — Alarme de incêndio | Recepção destacada, P1, protocolo de escalonamento; nenhuma atuação física |
 | E — Telemetria desatualizada | GW-IOT-01 desconectado; sensores roxos com a última leitura e sua idade |
+| F — Estado do mapa conceitual | CAM-020 (Área Restrita) offline e cofre instável, como no mapa fornecido |
+| G — Queda do link principal | RTR-01 cai; RTR-02 (4G) assume com latência maior; rede segue operacional; um incidente de failover |
+| H — Degradação térmica | Climatização perde rendimento; temperaturas sobem gradualmente (~60 s); um único incidente térmico |
 
 Encerre cada cenário pelo botão **Encerrar** ou por **Encerrar todos**.
 

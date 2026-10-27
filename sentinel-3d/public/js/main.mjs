@@ -46,6 +46,11 @@ app.go = (view) => {
   if (!twin) renderView(app, view, $('#view-page'));
   else app.scene?.resize();
 };
+app.flyToRoom = (id) => {
+  if (app.view !== 'twin') app.go('twin');
+  if (app.mode === 'plan' || !app.scene) return;
+  app.scene.flyToRoom(id);
+};
 app.setCategoryFilter = (cats) => {
   for (const inp of document.querySelectorAll('#f-category input')) inp.checked = cats.includes(inp.value);
   applyFilters();
@@ -126,6 +131,7 @@ function applySnapshot(s) {
   app.live.scenarios = s.scenarios;
   app.live.devices = new Map(s.devices.map((d) => [d.id, d]));
   app.live.incidents = s.incidents;
+  app.lastStates = s.devices;
   app.scene?.setStates(s.devices, s.incidents);
   app.plan?.setStates(s.devices);
   renderKpis(); renderScenarios(); refreshTimeline(); refreshPanelThrottled(); refreshPage();
@@ -181,7 +187,9 @@ async function loadAll() {
     const fresh = canvas.cloneNode(false); canvas.replaceWith(fresh); // nova cena ⇒ novo contexto
     app.scene = new TwinScene({ canvas: fresh, wrap, vrSlot: $('#vr-slot'), onSelect: (id) => app.select(id), onFps: (f) => { $('#fps').textContent = `${f} fps medidos`; } });
     app.scene.onLockChange = (locked) => { $('#crosshair').hidden = !locked; $('#fpv-hint').hidden = locked || app.mode !== 'fpv'; };
-    app.scene.build(app.layout, devices, deps, { hideRestricted });
+    const brand = await api.get('/api/brand').catch(() => ({}));
+    await app.scene.build(app.layout, devices, deps, { hideRestricted, logoUrl: brand.logo ?? null });
+    app.scene.toggleMetrics($('#t-metrics').getAttribute('aria-pressed') === 'true');
   } else {
     toast('WebGL indisponível: exibindo a planta 2D (modo simplificado).', 'high');
     for (const b of document.querySelectorAll('#modes button')) if (b.dataset.mode !== 'plan') b.disabled = true;
@@ -216,8 +224,11 @@ async function toggleScenario(id) {
     await api.post(`/api/scenarios/${id}/${on ? 'stop' : 'start'}`);
     if (!on) {
       toast(`MODO DEMONSTRAÇÃO — cenário ${id} iniciado. Aguarde a detecção (alguns segundos).`, 'info');
-      const target = { A: 'CAM-018', B: 'SW-03', C: 'MTR-01', D: 'SD-04', E: 'GW-IOT-01' }[id];
-      setTimeout(() => { const inc = app.live.incidents.find((i) => i.deviceIds?.includes(target)); if (inc) { app.selectIncident(inc.id); app.focus(inc.rootDeviceId); } }, { A: 6500, B: 9000, C: 4000, D: 4000, E: 9000 }[id]);
+      const target = { A: 'CAM-018', B: 'SW-03', C: 'MTR-01', D: 'SD-04', E: 'GW-IOT-01', F: 'CAM-020', G: 'RTR-01', H: 'HVAC-01' }[id];
+      // tempo típico até o incidente existir (detecção + janela de confirmação)
+      const wait = { A: 6500, B: 9000, C: 4000, D: 4000, E: 9000, F: 17000, G: 17000, H: 30000 }[id];
+      if (id === 'H') setTimeout(() => app.focus('HVAC-01'), 1500);
+      setTimeout(() => { const inc = app.live.incidents.find((i) => i.deviceIds?.includes(target)); if (inc) { app.selectIncident(inc.id); app.focus(inc.rootDeviceId); } else app.focus(target); }, wait);
     }
   } catch (e) { toast(e.message, 'critical'); }
 }
@@ -236,6 +247,7 @@ async function boot() {
   const toggle = (id, fn) => $(id).addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-pressed') !== 'true'; e.currentTarget.setAttribute('aria-pressed', on); fn(on); });
   toggle('#t-deps', (on) => app.scene?.toggleDeps(on));
   toggle('#t-labels', (on) => app.scene?.toggleLabels(on));
+  toggle('#t-metrics', (on) => app.scene?.toggleMetrics(on, app.lastStates));
   toggle('#t-expand', (on) => { document.body.classList.toggle('expanded', on); setTimeout(() => app.scene?.resize(), 240); });
   $('#sc-reset').addEventListener('click', async () => { try { await api.post('/api/scenarios/all/stop'); toast('Todos os cenários encerrados.'); } catch (e) { toast(e.message, 'critical'); } });
   const drawer = $('#ai-drawer');

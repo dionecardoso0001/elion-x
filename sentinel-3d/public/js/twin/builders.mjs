@@ -80,11 +80,12 @@ export function buildAgency(layout, mats, { hideRestricted = false } = {}) {
   const out = { group, walls: [], glass: [], ceilings: [], floors: new Map(), colliders: [], lockedRooms: [] };
 
   // entorno: calçada + piso externo
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), mats.ground);
-  ground.rotation.x = -Math.PI / 2; ground.position.set(16, -0.02, 11); ground.receiveShadow = true;
+  const BX = layout.bounds.x, BZ = layout.bounds.z;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(130, 130), mats.ground);
+  ground.rotation.x = -Math.PI / 2; ground.position.set(BX / 2, -0.02, BZ / 2); ground.receiveShadow = true;
   group.add(ground);
-  const sw = new THREE.Mesh(new THREE.PlaneGeometry(44, 8), new THREE.MeshStandardMaterial({ map: canvasTex(512, FLOOR_DRAW.sidewalk, [44 / 6, 8 / 6]), roughness: 0.9 }));
-  sw.rotation.x = -Math.PI / 2; sw.position.set(16, -0.01, 26); sw.receiveShadow = true;
+  const sw = new THREE.Mesh(new THREE.PlaneGeometry(BX + 10, 7), new THREE.MeshStandardMaterial({ map: canvasTex(512, FLOOR_DRAW.sidewalk, [(BX + 10) / 6, 7 / 6]), roughness: 0.9 }));
+  sw.rotation.x = -Math.PI / 2; sw.position.set(BX / 2, -0.01, BZ + 3.5); sw.receiveShadow = true;
   group.add(sw);
 
   // pisos por ambiente
@@ -159,10 +160,10 @@ export function buildAgency(layout, mats, { hideRestricted = false } = {}) {
   }
 
   // fachada: marquise vermelha e placa (sem logotipo — ativo oficial a inserir)
-  const canopy = new THREE.Mesh(new THREE.BoxGeometry(32.6, 0.7, 1.4), mats.red);
-  canopy.position.set(16, H + 0.35, 22.5); canopy.castShadow = true; group.add(canopy); out.walls.push(canopy);
+  const canopy = new THREE.Mesh(new THREE.BoxGeometry(BX + 0.6, 0.7, 1.4), mats.red);
+  canopy.position.set(BX / 2, H + 0.35, BZ + 0.5); canopy.castShadow = true; group.add(canopy); out.walls.push(canopy);
   const sign = new THREE.Mesh(new THREE.PlaneGeometry(9, 0.62), new THREE.MeshBasicMaterial({ map: textTexture(['AGÊNCIA DEMONSTRATIVA 001', 'planta fictícia · logotipo oficial a inserir com ativo autorizado'], { w: 1400, h: 96 }) }));
-  sign.position.set(16, H + 0.35, 23.21); group.add(sign); out.walls.push(sign);
+  sign.position.set(BX / 2, H + 0.35, BZ + 1.21); group.add(sign); out.walls.push(sign);
   return out;
 }
 
@@ -188,13 +189,17 @@ export function buildFurniture(item, mats) {
       g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.42), mats.steel).translateY(0.21));
       g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.03, 16), mats.black).translateY(0.03));
       break;
-    case 'sofa':
-      g.add(box(2.2, 0.42, 0.85, mats.redFabric, 0, 0.21, 0), box(2.2, 0.45, 0.2, mats.redFabric, 0, 0.62, 0.33), box(0.18, 0.6, 0.85, mats.redFabric, -1.1, 0.3, 0), box(0.18, 0.6, 0.85, mats.redFabric, 1.1, 0.3, 0));
+    case 'sofa': {
+      const m = item.color === 'grey' ? new THREE.MeshStandardMaterial({ color: 0xa8a29e, roughness: 0.9 }) : mats.redFabric;
+      g.add(box(2.2, 0.42, 0.85, m, 0, 0.21, 0), box(2.2, 0.45, 0.2, m, 0, 0.62, 0.33), box(0.18, 0.6, 0.85, m, -1.1, 0.3, 0), box(0.18, 0.6, 0.85, m, 1.1, 0.3, 0));
+      }
       collider = [1.2, 0.45]; break;
-    case 'counter':
-      g.add(box(4.2, 1.05, 0.7, mats.white, 0, 0.525, 0), box(4.2, 0.05, 0.9, mats.wood, 0, 1.08, 0.1), box(4.2, 0.14, 0.02, mats.red, 0, 0.75, 0.36));
-      g.add(box(0.5, 0.32, 0.03, mats.black, -1, 1.28, -0.1), box(0.5, 0.32, 0.03, mats.black, 1, 1.28, -0.1));
-      collider = [2.15, 0.45]; break;
+    case 'counter': {
+      const w = item.w || 4.2;
+      g.add(box(w, 1.05, 0.7, mats.white, 0, 0.525, 0), box(w, 0.05, 0.9, mats.wood, 0, 1.08, 0.1), box(w, 0.14, 0.02, mats.red, 0, 0.75, 0.36));
+      g.add(box(0.5, 0.32, 0.03, mats.black, -w / 4, 1.28, -0.1), box(0.5, 0.32, 0.03, mats.black, w / 4, 1.28, -0.1));
+      collider = [w / 2 + 0.05, 0.45]; break;
+    }
     case 'table':
       g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.04, 24), mats.wood).translateY(0.48), new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 0.46), mats.black).translateY(0.23));
       collider = [0.45, 0.45]; break;
@@ -219,9 +224,88 @@ export function buildFurniture(item, mats) {
       for (let x = -3; x <= 3; x += 0.75) { const l = new THREE.Mesh(new THREE.IcosahedronGeometry(0.32, 0), mats.leaf); l.position.set(x, 0.62, 0); g.add(l); }
       collider = [3.5, 0.45]; break;
     case 'brandwall': {
-      const panel = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 1.3), new THREE.MeshStandardMaterial({ map: textTexture(['SENTINEL 3D', 'AGÊNCIA DEMONSTRATIVA · inserir identidade visual oficial apenas com ativos autorizados'], { w: 1400, h: 330 }), roughness: 0.5 }));
-      panel.position.set(0, 2.05, 0.02); g.add(panel);
-      g.add(box(5.8, 1.5, 0.04, mats.darkWood, 0, 2.05, 0));
+      // Parede vermelha da marca. Logotipo SÓ com ativo oficial autorizado (public/brand/logo.png);
+      // sem ele, exibe placa neutra — nunca uma recriação da marca.
+      g.add(box(6.2, 2.0, 0.08, mats.red, 0, 1.9, 0));
+      g.add(box(0.5, 2.4, 0.1, mats.wood, -3.35, 1.2, 0.02), box(0.5, 2.4, 0.1, mats.wood, 3.35, 1.2, 0.02));
+      const map = item.logo || textTexture(['AGÊNCIA DEMONSTRATIVA', 'logotipo oficial: inserir ativo autorizado em public/brand/'], { w: 1400, h: 330 });
+      const aspect = item.logoAspect || 1400 / 330;
+      const h = Math.min(1.2, 4.6 / aspect);
+      const panel = new THREE.Mesh(new THREE.PlaneGeometry(h * aspect, h), new THREE.MeshBasicMaterial({ map, transparent: !!item.logo }));
+      panel.position.set(0, 1.95, 0.05); g.add(panel);
+      collider = [3.4, 0.1];
+      break;
+    }
+    case 'redwall': { // revestimento vermelho da parede dos terminais
+      const w = item.w || 8;
+      g.add(box(w, 2.8, 0.06, mats.red, 0, 1.4, 0), box(w, 0.12, 0.08, mats.white, 0, 2.86, 0.01));
+      break;
+    }
+    case 'redpanel': g.add(box(1.2, 0.9, 0.04, mats.red, 0, 1.75, 0)); break;
+    case 'lockers': case 'cabinets': {
+      const w = item.w || 3; const n = Math.max(1, Math.round(w / 0.6));
+      const mat = item.kind === 'lockers' ? new THREE.MeshStandardMaterial({ color: 0x1e3a5f, roughness: 0.5, metalness: 0.4 }) : mats.deviceLight;
+      const hgt = item.kind === 'lockers' ? 1.9 : 1.1;
+      g.add(box(w, hgt, 0.5, mat, 0, hgt / 2, 0));
+      for (let i = 1; i < n; i++) g.add(box(0.01, hgt - 0.1, 0.01, mats.black, -w / 2 + i * (w / n), hgt / 2, 0.255));
+      collider = [w / 2, 0.28]; break;
+    }
+    case 'bench': // banco de ripas de madeira
+      for (let i = 0; i < 6; i++) g.add(box(1.6, 0.04, 0.07, mats.wood, 0, 0.45, -0.21 + i * 0.085));
+      g.add(box(0.06, 0.43, 0.45, mats.black, -0.7, 0.22, 0), box(0.06, 0.43, 0.45, mats.black, 0.7, 0.22, 0));
+      collider = [0.8, 0.25]; break;
+    case 'roundtable': {
+      g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.04, 28), mats.wood).translateY(0.74), new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.2, 0.72, 12), mats.black).translateY(0.36));
+      for (let a = 0; a < 4; a++) { const c = buildFurniture({ kind: 'chair', x: 0, z: 0 }, mats).group; c.position.set(Math.sin(a * Math.PI / 2) * 0.95, 0, Math.cos(a * Math.PI / 2) * 0.95); c.rotation.y = a * Math.PI / 2 + Math.PI; g.add(c); }
+      collider = [0.65, 0.65]; break;
+    }
+    case 'armchair': {
+      const mat = item.color === 'grey' ? new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.9 }) : item.color === 'dark' ? mats.black : mats.redFabric;
+      g.add(box(0.8, 0.42, 0.78, mat, 0, 0.21, 0), box(0.8, 0.45, 0.16, mat, 0, 0.62, 0.31), box(0.14, 0.58, 0.78, mat, -0.4, 0.29, 0), box(0.14, 0.58, 0.78, mat, 0.4, 0.29, 0));
+      collider = [0.42, 0.42]; break;
+    }
+    case 'slats': for (let i = 0; i < 7; i++) g.add(box(0.06, 2.4, 0.06, mats.wood, -0.3 + i * 0.1, 1.2, 0)); break;
+    case 'accessible': {
+      const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+      x.fillStyle = '#1d4ed8'; x.fillRect(0, 0, 128, 128); x.fillStyle = '#fff'; x.font = '700 92px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('♿', 64, 70);
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.3), new THREE.MeshBasicMaterial({ map: t })); m.position.set(0, 1.6, 0); m.rotation.y = -Math.PI / 2; g.add(m);
+      break;
+    }
+    case 'flowerbed': {
+      const w = item.w || 8;
+      g.add(box(w, 0.5, 1.1, mats.plantPot, 0, 0.25, 0));
+      const flower = new THREE.MeshStandardMaterial({ color: 0xc81e3a, roughness: 0.8, flatShading: true });
+      const yellow = new THREE.MeshStandardMaterial({ color: 0xe0b020, roughness: 0.8, flatShading: true });
+      for (let x = -w / 2 + 0.35; x <= w / 2 - 0.3; x += 0.42) {
+        const l = new THREE.Mesh(new THREE.IcosahedronGeometry(0.26, 0), mats.leaf); l.position.set(x, 0.66, ((x * 7) % 2) * 0.12 - 0.08); g.add(l);
+        const f = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 0), Math.round(x * 3) % 3 ? flower : yellow); f.position.set(x + 0.1, 0.86, 0.15); g.add(f);
+      }
+      collider = [w / 2, 0.55]; break;
+    }
+    case 'lamp': {
+      g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.9, 12), mats.black).translateY(0.45));
+      g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.12, 12), new THREE.MeshStandardMaterial({ color: 0xfff1c1, emissive: 0xffd27a, emissiveIntensity: 2 })).translateY(0.96));
+      break;
+    }
+    case 'doormat': {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.2), new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 1 }));
+      m.rotation.x = -Math.PI / 2; m.position.y = 0.005; g.add(m);
+      const s2 = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.8), new THREE.MeshStandardMaterial({ color: 0x8a1010, roughness: 1 }));
+      s2.rotation.x = -Math.PI / 2; s2.position.y = 0.007; g.add(s2);
+      break;
+    }
+    case 'person': { // figura humana simplificada (ocupação ilustrativa, não monitorada)
+      const cloth = new THREE.MeshStandardMaterial({ color: item.color ?? 0x334155, roughness: 0.85 });
+      const skin = new THREE.MeshStandardMaterial({ color: 0xc89f7f, roughness: 0.7 });
+      const sit = item.pose === 'sit' || item.pose === 'sofa';
+      const seat = item.pose === 'sofa' ? 0.45 : 0.5;
+      const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.42, 4, 10), cloth); torso.position.y = sit ? seat + 0.33 : 1.15;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 14, 10), skin); head.position.y = sit ? seat + 0.78 : 1.6;
+      g.add(torso, head);
+      if (sit) { const legs = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.42), new THREE.MeshStandardMaterial({ color: 0x1f2937 })); legs.position.set(0, seat + 0.03, 0.2); g.add(legs); }
+      else { const legs = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.85, 0.18), new THREE.MeshStandardMaterial({ color: 0x1f2937 })); legs.position.y = 0.43; g.add(legs); }
+      g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
       break;
     }
     default: break;

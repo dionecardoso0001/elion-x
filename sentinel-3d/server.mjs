@@ -112,6 +112,9 @@ export function createServer({ port = 0, dataDir = path.join(ROOT, 'data'), tick
       return json(res, 200, ag);
     }
 
+    // logotipo oficial: só é usado se um ativo AUTORIZADO for colocado em public/brand/logo.png
+    if (p === '/api/brand') return json(res, 200, { logo: fs.existsSync(path.join(PUBLIC, 'brand', 'logo.png')) ? '/brand/logo.png' : null });
+
     if (p === '/api/state') return json(res, 200, snapshot(session, now));
 
     if (p === '/api/devices') {
@@ -194,11 +197,18 @@ export function createServer({ port = 0, dataDir = path.join(ROOT, 'data'), tick
       const periodMs = periods[url.searchParams.get('period')] ?? 3600000;
       const category = CATEGORIES[url.searchParams.get('category')] ? url.searchParams.get('category') : '';
       const severity = ['critical', 'high', 'medium', 'low'].includes(url.searchParams.get('severity')) ? url.searchParams.get('severity') : '';
-      return json(res, 200, platform.summary({ periodMs, category, severity }, now));
+      const sum = platform.summary({ periodMs, category, severity }, now);
+      if (!can(session, 'read:restricted')) {
+        // energia (MTR-01), banda WAN (RTR-01) e nobreaks ficam em área restrita: não chegam ao observador
+        sum.series = sum.series.map((x) => ({ ...x, kw: null, wanMbps: null }));
+        sum.upsTrend = null;
+        sum.restricted = ['kw', 'wanMbps', 'upsTrend'];
+      }
+      return json(res, 200, sum);
     }
 
     if (p === '/api/scenarios') return json(res, 200, { scenarios: Object.values(SCENARIOS), active: [...platform.sim.active].map(([id, v]) => ({ id, ...v })) });
-    if ((m = p.match(/^\/api\/scenarios\/([A-E]|all)\/(start|stop)$/)) && method === 'POST') {
+    if ((m = p.match(/^\/api\/scenarios\/([A-Z]|all)\/(start|stop)$/)) && method === 'POST') {
       if (!need('scenario:run')) return;
       if (m[2] === 'start' && m[1] === 'all') return json(res, 400, { error: 'inicie um cenário por vez' });
       const r = m[2] === 'start' ? platform.startScenario(m[1], session.user, now) : platform.stopScenario(m[1], session.user, now);
@@ -277,7 +287,7 @@ export function createServer({ port = 0, dataDir = path.join(ROOT, 'data'), tick
       // KPIs agregados não revelam a contagem de ativos ocultos
       const c = { ok: 0, degraded: 0, critical: 0, offline: 0, unknown: 0, maintenance: 0 };
       devices.forEach((d) => (c[d.status] += 1));
-      Object.assign(k, c, { devices: devices.length, noComm: c.offline + c.unknown });
+      Object.assign(k, c, { devices: devices.length, noComm: c.offline + c.unknown, kw: null, kwhToday: null }); // medidor em área restrita
     }
     return { now, kpis: k, devices, incidents, scenarios: k.scenarios };
   }

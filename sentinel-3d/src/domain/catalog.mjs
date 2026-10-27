@@ -240,4 +240,5 @@ export const EDGE_LABELS = {
   supervision: 'Supervisão pela central',
   'managed-by': 'Gerenciado por',
   power: 'Alimentação elétrica',
+  cooling: 'Arrefecimento (climatização)',
 };

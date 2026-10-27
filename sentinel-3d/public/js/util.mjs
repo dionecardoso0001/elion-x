@@ -86,3 +86,34 @@ export function toast(text, level = 'info', onClick) {
   document.getElementById('toasts').prepend(el);
   setTimeout(() => el.remove(), 7000);
 }
+
+/** KPI principal de desempenho por tipo de equipamento (camada "Desempenho" e painel). */
+export function kpiText(type, v = {}) {
+  const n = (x, d = 0) => (typeof x === 'number' ? x.toFixed(d) : '—');
+  switch (type) {
+    case 'camera': return v.videoOk === false ? 'SEM VÍDEO' : `${n(v.fps)} fps · ${n((v.bitrateKbps ?? 0) / 1000, 1)} Mb/s`;
+    case 'nvr': return `${n(v.storageUsedPct)}% disco · ${n(v.channelsRecording)} canais`;
+    case 'vms': return `CPU ${n(v.cpuPct)}% · mem ${n(v.memPct)}%`;
+    case 'server': return `CPU ${n(v.cpuPct)}% · ${n(v.tempC)} °C`;
+    case 'storage': return `${n(v.usedPct)}% · ${n(v.tempC)} °C`;
+    case 'router': return `${n(v.latencyMs)} ms · ${n(v.bandwidthMbps, 1)} Mb/s`;
+    case 'firewall': return `CPU ${n(v.cpuPct)}% · ${n(v.sessions)} sessões`;
+    case 'switch': return v.portsDownUnexpected ? `${v.portsDownUnexpected} porta(s) inativa(s)` : `CPU ${n(v.cpuPct)}% · ${n(v.tempC)} °C`;
+    case 'ap': return `${n(v.clients)} clientes · canal ${n(v.channelUtilPct)}%`;
+    case 'gateway': return `fila ${n(v.queueDepth)} · ${n(v.sensorsReporting)} sensores`;
+    case 'ups': return v.onBattery ? `BATERIA ${n(v.batteryPct)}% · ${n(v.runtimeMin)} min` : `rede · carga ${n(v.loadPct)}% · saúde ${n(v.batteryHealthPct, 1)}%`;
+    case 'meter': return `${n(v.kW, 1)} kW · ${n(v.voltageV)} V`;
+    case 'pdu': return `${n(v.kW, 2)} kW · ${n(v.loadPct)}%`;
+    case 'smoke': case 'mcp': case 'sensor': return v.state ?? '—';
+    case 'facp': return v.state === 'alarme' ? `ALARME · ${v.zonesInAlarm} zona(s)` : (v.acPowerOk === false ? 'normal · sem AC' : v.state ?? '—');
+    case 'alarmpanel': return `${v.armed ?? '—'}${v.monitoringLinkOk === false ? ' · sem link' : ''}`;
+    case 'access': return v.readersOk === false ? 'falha de leitora' : 'leitoras OK';
+    case 'reader': return v.online ? 'operante' : 'inoperante';
+    case 'vault': return `${v.sensorState ?? '—'}${v.powerOk === false ? ' · alimentação!' : ''}`;
+    case 'th': return `${n(v.tempC, 1)} °C · ${n(v.humidityPct)}%`;
+    case 'leak': return v.wet ? 'ÁGUA' : 'seco';
+    case 'hvac': return v.running === false ? 'PARADO' : `insufl. ${n(v.supplyTempC, 1)} °C`;
+    case 'atm': case 'totem': return v.inService === false ? 'FORA DE SERVIÇO' : 'em serviço';
+    default: return '';
+  }
+}

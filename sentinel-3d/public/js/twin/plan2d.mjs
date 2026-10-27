@@ -21,7 +21,7 @@ export class Plan2D {
     for (const r of layout.rooms) {
       const locked = hideRestricted && r.restricted;
       svg.append(h('rect', { svg: true, x: r.x0, y: r.z0, width: r.x1 - r.x0, height: r.z1 - r.z0, fill: locked ? '#0b1a33' : r.restricted ? '#101a26' : '#121a24', stroke: '#2a3a4e', 'stroke-width': 0.04 }));
-      svg.append(h('text', { svg: true, x: (r.x0 + r.x1) / 2, y: r.z0 + 0.7, 'text-anchor': 'middle', 'font-size': 0.5, fill: locked ? '#66768b' : '#93a3b8', text: locked ? `${r.name} (restrito)` : r.name }));
+      svg.append(h('text', { svg: true, x: (r.x0 + r.x1) / 2, y: r.z0 + 0.7, 'text-anchor': 'middle', 'font-size': 0.5, fill: locked ? '#66768b' : '#93a3b8', text: `${r.num ? r.num + ' · ' : ''}${locked ? `${r.short ?? r.name} (restrito)` : r.short ?? r.name}` }));
     }
     for (const w of layout.walls) {
       svg.append(h('line', { svg: true, x1: w.a[0], y1: w.a[1], x2: w.b[0], y2: w.b[1], stroke: w.kind === 'glass' ? '#4fb3ff' : w.kind === 'low' ? '#8b6a4a' : '#d6d1c7', 'stroke-width': w.kind === 'wall' ? 0.15 : 0.08 }));
@@ -51,6 +51,8 @@ export class Plan2D {
       const [x, , z] = n.d.pos;
       const shape = SHAPES[s.status](x, z);
       shape.setAttribute('fill', COLORS[s.status]); shape.setAttribute('stroke', COLORS[s.status]);
+      // no SVG o stroke-width padrão é 1 unidade = 1 metro nesta planta: sempre explícito
+      if (!shape.hasAttribute('stroke-width')) shape.setAttribute('stroke-width', 0);
       n.g.replaceChildren(h('title', { svg: true, text: `${n.d.id} — ${n.d.name}: ${this.statusLabels[s.status]}` }), shape);
       n.g.setAttribute('aria-label', `${n.d.id}, ${n.d.name}, ${this.statusLabels[s.status]}`);
     }
