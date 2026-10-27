@@ -174,6 +174,7 @@ async function loadAll() {
   app.deps = deps;
   $('#agency').replaceChildren(...app.agencies.map((a) => h('option', { value: a.id, text: `${a.name}${a.demo ? ' (demo)' : ''}` })));
   $('#disclaimer').textContent = app.layout.disclaimer;
+  applyMode();
   const hideRestricted = !app.can('read:restricted');
 
   // 3D (com fallback 2D quando não há WebGL)
@@ -216,6 +217,19 @@ async function loadAll() {
   });
   app.clearSelection();
   app.go(app.view);
+}
+
+/** Identifica o modo na interface: dado simulado nunca pode parecer real, nem o contrário. */
+function applyMode() {
+  app.demo = app.meta.mode !== 'integracao';
+  const banner = document.querySelector('.demo-banner');
+  banner.classList.toggle('integration', !app.demo);
+  banner.replaceChildren(
+    h('strong', { text: app.demo ? 'MODO DEMONSTRAÇÃO — DADOS SIMULADOS' : 'MODO INTEGRAÇÃO — TELEMETRIA DE CONECTORES' }),
+    h('span', { text: app.demo
+      ? `Planta e inventário fictícios · nenhum equipamento físico conectado${globalThis.__SENTINEL_LOCAL__ ? ' · versão autônoma (sem servidor)' : ''}`
+      : `Simulador desativado · equipamentos sem telemetria aparecem como "sem dados confiáveis"${app.meta.authMode === 'demonstracao' ? ' · ⚠ autenticação de demonstração: somente laboratório isolado' : ''}` }));
+  document.querySelector('.sim').hidden = !app.demo;
 }
 
 async function toggleScenario(id) {

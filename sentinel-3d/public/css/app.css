@@ -51,6 +51,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-bottom: 1px solid #5c4500;
 }
 .demo-banner strong { color: #facc15; }
+.demo-banner.integration { background: #062a33; color: #a5f3fc; border-bottom-color: #0e7490; }
+.demo-banner.integration strong { color: #22d3ee; }
 
 /* ---------- topo ---------- */
 .topbar {

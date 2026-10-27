@@ -95,7 +95,7 @@ function renderOverview(app, el) {
   };
   const recCams = ['NVR-01', 'NVR-02'].reduce((a, id) => a + (app.live.devices.get(id)?.values?.channelsRecording ?? 0), 0);
   const totalCams = statics.filter((d) => d.type === 'camera').length;
-  const perfSec = h('section', { class: 'ctx-sec' }, h('h3', {}, h('span', { text: 'Desempenho' }), h('span', { class: 'pill synthetic', text: 'simulado' })),
+  const perfSec = h('section', { class: 'ctx-sec' }, h('h3', {}, h('span', { text: 'Desempenho' }), app.demo ? h('span', { class: 'pill synthetic', text: 'simulado' }) : h('span', { class: 'pill', text: 'conectores' })),
     h('dl', { class: 'kv' },
       perfRow('Link WAN principal', 'RTR-01', (v) => `${v.latencyMs} ms · ${v.bandwidthMbps} Mb/s`),
       perfRow('Link secundário (4G)', 'RTR-02', (v) => `${v.bandwidthMbps > 5 ? 'ATIVO' : 'standby'} · ${v.latencyMs} ms`),
@@ -108,7 +108,7 @@ function renderOverview(app, el) {
     ));
 
   fill(el,
-    h('div', { class: 'ctx-head' }, h('div', {}, h('h2', { text: 'Mapa de ativos · visão operacional' }), h('div', { class: 'sub', text: 'Estados calculados pela telemetria (simulada). Clique para navegar.' }))),
+    h('div', { class: 'ctx-head' }, h('div', {}, h('h2', { text: 'Mapa de ativos · visão operacional' }), h('div', { class: 'sub', text: `Estados calculados pela telemetria${app.demo ? ' (simulada)' : ' recebida dos conectores'}. Clique para navegar.` }))),
     h('section', { class: 'ctx-sec' }, h('h3', {}, h('span', { text: 'Incidentes ativos' }), h('span', { class: `badge ${incs.length ? '' : 'zero'}`, text: incs.length })),
       incs.length ? h('ul', { class: 'list' }, incs.map((i) => h('li', {}, h('button', { onclick: () => app.selectIncident(i.id) },
         h('div', { class: 'row-top' }, h('strong', { text: i.title }), sevTag(i.severity)),
@@ -148,7 +148,7 @@ async function renderDevice(app, el, id) {
     h('div', {}, statusBadge(d.status, st.label), ' ', d.maintenance ? h('span', { class: 'pill', text: `manutenção: ${d.maintenance.note || 'sem nota'}` }) : null),
     h('section', { class: 'ctx-sec' }, h('h3', { text: 'Motivos (regras aplicadas)' }),
       d.reasons.length ? d.reasons.map((r) => h('div', { class: `reason ${r.level}`, text: r.text })) : h('div', { class: 'reason', text: 'Todas as regras atendidas na última leitura.' })),
-    h('section', { class: 'ctx-sec' }, h('h3', {}, h('span', { text: stale ? 'Últimas leituras (antigas — não são estado atual)' : 'Telemetria' }), h('span', { class: 'pill synthetic', text: 'simulada' })),
+    h('section', { class: 'ctx-sec' }, h('h3', {}, h('span', { text: stale ? 'Últimas leituras (antigas — não são estado atual)' : 'Telemetria' }), app.demo ? h('span', { class: 'pill synthetic', text: 'simulada' }) : h('span', { class: 'pill', text: d.lastConnector ? `via ${d.lastConnector}` : 'sem leitura' })),
       h('dl', { class: 'kv' }, metricRows,
         h('dt', { text: 'Última comunicação' }), h('dd', { class: stale ? 'bad' : '', text: `${fmtAge(d.ageMs)} (limite ${data.staleAfterMs / 1000} s)` }),
         h('dt', { text: 'Timestamp de origem' }), h('dd', { class: 'mono', text: fmtTime(d.sourceTs, true) }),
@@ -192,7 +192,7 @@ function trendBlock(tr) {
   const text = a?.projection
     ? `Queda de ${Math.abs(a.slopePerDay).toFixed(2)} p.p./dia (R² ${a.r2.toFixed(2)}, n = ${a.n}). Projeção: ${a.projection.threshold}% em ~${Math.round(a.projection.daysToThreshold)} dias, se a tendência linear se mantiver.`
     : `Sem projeção: ${a?.reason ?? 'dados insuficientes'}.`;
-  return h('section', { class: 'ctx-sec' }, h('h3', {}, h('span', { text: 'Tendência — saúde da bateria' }), h('span', { class: 'pill synthetic', text: 'série sintética' })),
+  return h('section', { class: 'ctx-sec' }, h('h3', {}, h('span', { text: 'Tendência — saúde da bateria' }), tr.synthetic ? h('span', { class: 'pill synthetic', text: 'série sintética' }) : h('span', { class: 'pill', text: `${tr.series.length} leitura(s) real(is)` })),
     sparkline(tr.series.map((p) => ({ t: p.t, v: p.v })), '#eab308'), h('p', { class: 'row-sub', text }));
 }
 
@@ -262,7 +262,7 @@ function renderIncident(app, el, id) {
       h('button', { class: 'btn icon ghost', 'aria-label': 'Fechar', onclick: () => app.clearSelection() }, '✕')),
     h('div', { class: 'toolbar' }, sevTag(inc.severity), h('span', { class: 'pill', text: `Prioridade ${inc.priority}` }),
       inc.escalationLevel > 1 ? h('span', { class: 'pill', text: `Escalonado nível ${inc.escalationLevel}` }) : null,
-      inc.synthetic === 'history' ? h('span', { class: 'pill synthetic', text: 'histórico sintético' }) : h('span', { class: 'pill synthetic', text: 'dados simulados' })),
+      inc.synthetic === 'history' ? h('span', { class: 'pill synthetic', text: 'histórico sintético' }) : inc.synthetic ? h('span', { class: 'pill synthetic', text: 'dados simulados' }) : h('span', { class: 'pill', text: 'dados de conectores' })),
     inc.redacted ? h('div', { class: 'locked-box', text: 'Detalhes restritos ao perfil Operador/Administrador.' }) : null,
     dx ? h('div', { class: 'dx ctx-sec' },
       h('div', { class: 'dx-block' }, h('h4', { text: 'Incidente identificado' }), h('p', { text: dx.title })),

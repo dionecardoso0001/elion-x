@@ -13,7 +13,10 @@ export function correlate({ devices, deps, states }) {
   for (const e of deps) { children.get(e.from)?.push(e); parents.get(e.to)?.push(e); }
 
   const st = (id) => states.get(id)?.status;
-  const abnormal = devices.filter((d) => ABNORMAL.has(st(d.id))).map((d) => d.id);
+  // Equipamento que NUNCA reportou ainda não foi integrado: aparece como "sem dados" no 3D,
+  // mas não é falha e não abre incidente (num piloto com poucos ativos integrados, viraria ruído).
+  const neverReported = (id) => states.get(id)?.reasons?.some((r) => r.code === 'never');
+  const abnormal = devices.filter((d) => ABNORMAL.has(st(d.id)) && !neverReported(d.id)).map((d) => d.id);
   const claimed = new Set();
   const groups = [];
   const hasReason = (id, prefix) => states.get(id)?.reasons?.some((r) => r.code.startsWith(prefix));

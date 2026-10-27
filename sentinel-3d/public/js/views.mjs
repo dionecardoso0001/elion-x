@@ -47,7 +47,7 @@ function overview(app, root) {
   const body = h('div', { class: 'grid wide' });
   const rerender = () => overview(app, root);
   fillRoot(root, 
-    pageHead('Visão Geral', 'Indicadores derivados dos registros da plataforma — telemetria simulada e histórico sintético rotulado.',
+    pageHead('Visão Geral', app.demo ? 'Indicadores derivados dos registros da plataforma — telemetria simulada e histórico sintético rotulado.' : 'Indicadores derivados exclusivamente da telemetria recebida dos conectores.',
       select('Período', [['15m', '15 min'], ['1h', '1 hora'], ['6h', '6 horas'], ['24h', '24 horas'], ['7d', '7 dias']], f.period, (v) => { f.period = v; rerender(); }),
       select('Categoria', cats, f.category, (v) => { f.category = v; rerender(); }),
       select('Agência', app.agencies.map((a) => [a.id, a.name]), app.agencies[0]?.id, () => {}),
@@ -171,7 +171,7 @@ function aiView(app, root) {
     dxs.length ? h('div', { class: 'grid wide' }, dxs.map((i) => h('button', { class: 'card row-btn', onclick: () => app.selectIncident(i.id) },
       h('div', { class: 'row-top' }, h('strong', { text: i.diagnosis.title }), sevTag(i.severity)),
       h('div', { class: 'row-sub', text: `Hipótese: ${i.diagnosis.hypothesis}` }),
-      h('div', { class: 'row-sub', text: `Confiança: ${i.diagnosis.confidence} · ${i.deviceIds.length} equipamento(s) · ${i.id}` })))) : h('p', { class: 'empty', text: 'Nenhum diagnóstico ativo. Execute um cenário no simulador para observar o motor em ação.' }));
+      h('div', { class: 'row-sub', text: `Confiança: ${i.diagnosis.confidence} · ${i.deviceIds.length} equipamento(s) · ${i.id}` })))) : h('p', { class: 'empty', text: app.demo ? 'Nenhum diagnóstico ativo. Execute um cenário no simulador para observar o motor em ação.' : 'Nenhum diagnóstico ativo.' }));
   app.ask('', log, { greet: true });
 }
 

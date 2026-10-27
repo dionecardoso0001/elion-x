@@ -70,7 +70,7 @@ export function createApi({ platform, sessions, store = null, audit, auditLog, d
     const now = Date.now();
     const q = (k) => query.get(k);
 
-    if (p === '/api/health') return ok({ status: 'ok', uptimeS: Math.round(uptimeS()), devices: platform.devices.length, demo: true });
+    if (p === '/api/health') return ok({ status: 'ok', uptimeS: Math.round(uptimeS()), devices: platform.devices.length, mode: platform.mode, demo: platform.simulate });
     if (p === '/api/session' && method === 'GET') return ok({ authenticated: !!session, role: session?.role ?? null });
     if (p === '/api/session' && method === 'POST') {
       if (!demoAuth) return err(403, 'autenticação de demonstração desabilitada — use o IdP corporativo');
@@ -90,7 +90,7 @@ export function createApi({ platform, sessions, store = null, audit, auditLog, d
     let m;
 
     if (p === '/api/me') return ok({ user: session.user, role: session.role, roleLabel: ROLES[session.role].label, perms: ROLES[session.role].perms });
-    if (p === '/api/meta') return ok({ types: TYPES, categories: CATEGORIES, statuses: STATUSES, edgeLabels: EDGE_LABELS, staleFactor: STALE_FACTOR, roles: Object.fromEntries(Object.entries(ROLES).map(([k, v]) => [k, v.label])) });
+    if (p === '/api/meta') return ok({ mode: platform.mode, authMode: demoAuth ? 'demonstracao' : 'idp', types: TYPES, categories: CATEGORIES, statuses: STATUSES, edgeLabels: EDGE_LABELS, staleFactor: STALE_FACTOR, roles: Object.fromEntries(Object.entries(ROLES).map(([k, v]) => [k, v.label])) });
     if (p === '/api/agencies') return ok(platform.twin.agencies.map(({ id, name, city, timezone, demo, disclaimer }) => ({ id, name, city, timezone, demo, disclaimer })));
     if ((m = p.match(/^\/api\/agencies\/([\w-]+)\/layout$/))) {
       const ag = platform.twin.agencies.find((a) => a.id === m[1]);
@@ -188,6 +188,7 @@ export function createApi({ platform, sessions, store = null, audit, auditLog, d
       return ok(sum);
     }
 
+    if (p === '/api/scenarios' && !platform.simulate) return ok({ scenarios: [], active: [], disabled: 'simulador desativado no modo integração' });
     if (p === '/api/scenarios') return ok({ scenarios: Object.values(SCENARIOS), active: [...platform.sim.active].map(([id, v]) => ({ id, ...v })) });
     if ((m = p.match(/^\/api\/scenarios\/([A-Z]|all)\/(start|stop)$/)) && method === 'POST') {
       const denied = need('scenario:run'); if (denied) return denied;

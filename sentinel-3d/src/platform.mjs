@@ -18,7 +18,15 @@ const SERIES_EVERY_MS = 10_000;
 const EVENT_SEVERITY = { critical: 'critical', offline: 'high', degraded: 'medium', unknown: 'medium', ok: 'info', maintenance: 'info' };
 
 export class Platform {
-  constructor({ store = null, seed = 42, now = Date.now(), ingestToken = '' } = {}) {
+  /**
+   * mode 'demo'      → simulador + séries/histórico sintéticos rotulados (padrão).
+   * mode 'integracao'→ SEM simulador e SEM dado sintético: só telemetria de conectores (POST /api/ingest).
+   *                    Um dispositivo que nunca reportou fica "sem dados confiáveis", nunca "operacional".
+   */
+  constructor({ store = null, seed = 42, now = Date.now(), ingestToken = '', mode = 'demo' } = {}) {
+    if (!['demo', 'integracao'].includes(mode)) throw new Error(`modo inválido: ${mode}`);
+    this.mode = mode;
+    this.simulate = mode === 'demo';
     this.store = store;
     this.twin = buildTwin();
     this.devices = this.twin.devices;
@@ -45,10 +53,11 @@ export class Platform {
     this.config = store ? store.loadConfig() : { retentionDays: 30 };
     const saved = store ? store.loadIncidents() : [];
     this.incidents = new IncidentManager({ incidents: saved, onEvent: (type, inc) => this.onIncidentEvent(type, inc) });
-    if (!saved.length) this.seedHistoryIncidents(now);
+    if (!saved.length && this.simulate) this.seedHistoryIncidents(now);
 
     this.sim = new Simulator({ devices: this.devices, deps: this.deps, seed });
-    this.backfill(now);
+    if (this.simulate) this.backfill(now);
+    else for (const d of this.devices) d.source = { connector: 'ingest-api', protocol: 'HTTPS POST /api/ingest (gateway)', note: 'Aguardando telemetria do gateway de integração' };
     this.cycle(now);
   }
 
@@ -64,13 +73,14 @@ export class Platform {
     this.anomalies.set(r.deviceId, detectAnomalies(dev.type, hist, r.values));
     hist.push({ t: r.sourceTs, values: r.values });
     if (hist.length > HISTORY_MAX) hist.shift();
+    r.connector = connector; // rastreabilidade: de onde veio cada leitura
     this.latest.set(r.deviceId, r);
     if (stats) { stats.received += 1; stats.lastAt = now; }
     return res;
   }
 
   cycle(now = Date.now()) {
-    for (const raw of this.sim.tick(now)) this.ingest(raw, 'simulador', now);
+    if (this.simulate) for (const raw of this.sim.tick(now)) this.ingest(raw, 'simulador', now);
     this.recompute(now);
   }
 
@@ -92,7 +102,7 @@ export class Platform {
     this.groups = correlate({ devices: this.devices, deps: this.deps, states: this.states });
     const ctx = { byId: this.byId, states: this.states, latest: this.latest, now, roomsById: this.roomsById, devices: this.devices, deps: this.deps };
     const diagnoses = new Map(this.groups.map((g) => [g.key, diagnose(g, ctx)]));
-    const changed = this.incidents.reconcile(this.groups, diagnoses, now, { firstSignal: this.firstSignal, agencyId: this.agency.id });
+    const changed = this.incidents.reconcile(this.groups, diagnoses, now, { firstSignal: this.firstSignal, agencyId: this.agency.id, synthetic: this.simulate });
     if (changed.length) this.store?.saveIncidents(this.incidents.incidents);
 
     if (now - this.lastSeriesAt >= SERIES_EVERY_MS) { this.series.push(this.sample(now)); this.lastSeriesAt = now; if (this.series.length > 3000) this.series.shift(); }
@@ -125,7 +135,7 @@ export class Platform {
   // ---------- eventos e notificações ----------
 
   pushEvent(ev) {
-    const e = { id: `EV-${ev.ts}-${Math.floor(Math.random() * 1e6)}`, synthetic: true, ...ev };
+    const e = { id: `EV-${ev.ts}-${Math.floor(Math.random() * 1e6)}`, synthetic: this.simulate, ...ev };
     this.events.push(e);
     if (this.events.length > EVENTS_MAX) this.events.shift();
     this.store?.appendEvent(e);
@@ -154,12 +164,14 @@ export class Platform {
   }
 
   startScenario(id, user, now = Date.now()) {
+    if (!this.simulate) return { error: 'simulador desativado no modo integração', code: 409 };
     if (!this.sim.start(id, now)) return { error: 'cenário inexistente', code: 404 };
     this.pushEvent({ ts: now, type: 'scenario.start', severity: 'info', category: 'simulacao', text: `MODO DEMONSTRAÇÃO — cenário ${id} (${SCENARIOS[id].label}) iniciado por ${user}` });
     return { ok: true };
   }
 
   stopScenario(id, user, now = Date.now()) {
+    if (!this.simulate) return { error: 'simulador desativado no modo integração', code: 409 };
     if (id === 'all') this.sim.reset(); else this.sim.stop(id);
     this.pushEvent({ ts: now, type: 'scenario.stop', severity: 'info', category: 'simulacao', text: `MODO DEMONSTRAÇÃO — ${id === 'all' ? 'todos os cenários encerrados' : `cenário ${id} encerrado`} por ${user}` });
     return { ok: true };
@@ -175,6 +187,7 @@ export class Platform {
       status: s?.status ?? 'unknown', reasons: s?.reasons ?? [], impactedBy: s?.impactedBy ?? [],
       lastSeen: s?.lastSeen ?? null, ageMs: r ? now - r.ingestTs : null,
       values: r?.values ?? {}, sourceTs: r?.sourceTs ?? null, quality: r?.quality ?? null,
+      lastConnector: r?.connector ?? null,
       maintenance: this.flags.get(d.id) ?? null,
     };
   }
@@ -190,19 +203,24 @@ export class Platform {
       openIncidents: this.incidents.active().length,
       kw: meter?.kW ?? null, kwhToday: meter?.kWhToday ?? null,
       connectors: { up: connectorsUp, total: CONNECTORS.length },
-      lastUpdate: now, scenarios: [...this.sim.active.keys()],
+      lastUpdate: now, scenarios: [...this.sim.active.keys()], mode: this.mode,
     };
   }
 
   connectorStatus(id, now) {
-    if (id === 'simulador') return now - (this.connectorStats.simulador.lastAt ?? 0) < 5000 ? 'ativo' : 'inativo';
+    if (id === 'simulador') return !this.simulate ? 'desativado' : now - (this.connectorStats.simulador.lastAt ?? 0) < 5000 ? 'ativo' : 'inativo';
     if (id === 'ingest-api') return this.ingestEnabled ? (now - (this.connectorStats['ingest-api'].lastAt ?? 0) < 60000 ? 'ativo' : 'aguardando dados') : 'desabilitado';
     return 'não conectado';
   }
 
   upsTrend() {
-    const series = this.sim.healthSeries;
-    return { deviceId: 'UPS-02', metric: 'batteryHealthPct', synthetic: true, series, analysis: projectCrossing(series, 80, 'down') };
+    if (this.simulate) {
+      const series = this.sim.healthSeries;
+      return { deviceId: 'UPS-02', metric: 'batteryHealthPct', synthetic: true, series, analysis: projectCrossing(series, 80, 'down') };
+    }
+    // integração: somente leituras reais recebidas; sem dados suficientes, a análise diz isso
+    const series = this.history.get('UPS-02').map((h) => ({ t: h.t, v: h.values.batteryHealthPct })).filter((p) => typeof p.v === 'number');
+    return { deviceId: 'UPS-02', metric: 'batteryHealthPct', synthetic: false, series, analysis: projectCrossing(series, 80, 'down') ?? { projection: null, reason: `apenas ${series.length} leitura(s) real(is); mínimo 10` } };
   }
 
   summary({ periodMs = 3600000, category = '', severity = '' } = {}, now = Date.now()) {

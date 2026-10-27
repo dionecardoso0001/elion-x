@@ -60,7 +60,7 @@ export class IncidentManager {
           firstSignalAt, createdAt: now, updatedAt: now, escalationLevel: 1,
           alertCount: g.members.length, suppressedDuplicates: Math.max(0, g.members.length - 1),
           diagnosis: dx, timeline: [{ ts: now, type: 'criado', text: `Incidente criado: ${dx.title}` }],
-          synthetic: true,
+          synthetic: ctx.synthetic ?? true,
         };
         this.incidents.push(inc);
         this.onEvent('incident.created', inc);

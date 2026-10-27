@@ -15,9 +15,14 @@ const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
 const THREE_DIR = path.join(ROOT, 'node_modules', 'three');
 
-export function createServer({ port = 0, dataDir = path.join(ROOT, 'data'), tickMs = 1000, ingestToken = process.env.SENTINEL_INGEST_TOKEN || '', demoAuth = process.env.SENTINEL_DEMO_AUTH !== '0', host = process.env.HOST || '127.0.0.1' } = {}) {
+export function createServer({ port = 0, dataDir = path.join(ROOT, 'data'), tickMs = 1000, ingestToken = process.env.SENTINEL_INGEST_TOKEN || '', demoAuth = process.env.SENTINEL_DEMO_AUTH !== '0', host = process.env.HOST || '127.0.0.1', mode = process.env.SENTINEL_MODE || 'demo' } = {}) {
+  if (mode === 'integracao' && String(ingestToken).length < 32) {
+    // sem token forte não existe integração segura: falha na partida, não em produção
+    throw new Error('Modo integração exige SENTINEL_INGEST_TOKEN com pelo menos 32 caracteres (gere com: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'base64url\'))")');
+  }
   const store = new Store(dataDir);
-  const platform = new Platform({ store, ingestToken });
+  const platform = new Platform({ store, ingestToken, mode });
+  const ingestLimiter = rateLimiter({ max: 240, windowMs: 60_000 }); // por origem: ~4 lotes/s
   const sessions = new Sessions();
   store.prune(platform.config.retentionDays);
 
@@ -75,6 +80,7 @@ export function createServer({ port = 0, dataDir = path.join(ROOT, 'data'), tick
     // Ingestão por gateway (conector real) — token próprio, separado das sessões humanas.
     if (p === '/api/ingest' && method === 'POST') {
       if (!platform.ingestEnabled) return json(res, 404, { error: 'ingestão externa desabilitada' });
+      if (!ingestLimiter(req.socket.remoteAddress)) return json(res, 429, { error: 'limite de requisições excedido; agrupe leituras em lotes (até 500)' });
       const auth = req.headers.authorization || '';
       if (!(auth.startsWith('Bearer ') && safeEqual(auth.slice(7), ingestToken))) return json(res, 401, { error: 'token inválido' });
       const body = await readJson(req, 256 * 1024);
@@ -150,6 +156,18 @@ function readJson(req, max = 16 * 1024) {
   });
 }
 
+/** Janela fixa por chave (origem). Suficiente para um processo; em cluster, usar Redis. */
+function rateLimiter({ max, windowMs }) {
+  const hits = new Map();
+  return (key) => {
+    const now = Date.now();
+    const h = hits.get(key);
+    if (!h || now - h.start > windowMs) { hits.set(key, { start: now, n: 1 }); return true; }
+    h.n += 1;
+    return h.n <= max;
+  };
+}
+
 function safeEqual(a, b) {
   const x = Buffer.from(String(a)); const y = Buffer.from(String(b));
   return x.length === y.length && crypto.timingSafeEqual(x, y);
@@ -158,8 +176,11 @@ function safeEqual(a, b) {
 // execução direta
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT) || 8730;
-  createServer({ port }).then(({ port: p, close }) => {
-    console.log(`\n  SENTINEL 3D — MODO DEMONSTRAÇÃO (dados simulados)\n  Abra no navegador: http://localhost:${p}\n`);
+  process.on('unhandledRejection', (e) => { console.error(`\n  ✖ ${e.message}\n`); process.exit(1); });
+  Promise.resolve().then(() => createServer({ port })).then(({ port: p, close, platform }) => {
+    const banner = platform.simulate ? 'MODO DEMONSTRAÇÃO (dados simulados)' : 'MODO INTEGRAÇÃO (sem simulador; telemetria só via POST /api/ingest)';
+    console.log(`\n  SENTINEL 3D — ${banner}\n  Abra no navegador: http://localhost:${p}\n`);
+    if (!platform.simulate && process.env.SENTINEL_DEMO_AUTH !== '0') console.warn('  ⚠ Autenticação de DEMONSTRAÇÃO ativa: qualquer pessoa com acesso à porta escolhe o perfil. Use somente em laboratório isolado até integrar o IdP corporativo.\n');
     const stop = () => close().then(() => process.exit(0));
     process.on('SIGINT', stop); process.on('SIGTERM', stop);
   });

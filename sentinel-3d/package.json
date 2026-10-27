@@ -9,7 +9,8 @@
     "start": "node server.mjs",
     "dev": "node --watch server.mjs",
     "test": "node --test test/*.test.mjs",
-    "build:standalone": "node scripts/build-standalone.mjs"
+    "build:standalone": "node scripts/build-standalone.mjs",
+    "validar:integracao": "node scripts/validar-integracao.mjs docs/VALIDACAO-INTEGRACAO.md"
   },
   "engines": {
     "node": ">=20.0.0"

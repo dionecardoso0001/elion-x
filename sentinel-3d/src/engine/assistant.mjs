@@ -27,7 +27,7 @@ export function answer(question, session, p, now = Date.now()) {
   const intent = INTENTS.find((i) => i.test(q))?.id || 'help';
   const tools = TOOLS[intent];
   const out = tools(q, { session, p, now });
-  return { intent, tool: `tool_${intent}`, source: 'Telemetria SIMULADA (modo demonstração)', ...out };
+  return { intent, tool: `tool_${intent}`, source: p.simulate ? 'Telemetria SIMULADA (modo demonstração)' : 'Telemetria de conectores (modo integração)', ...out };
 }
 
 const visibleDevices = (session, p, now) => p.devices
@@ -123,7 +123,7 @@ const TOOLS = {
     const mean = av.length ? av.reduce((a, b) => a + b.availabilityPct, 0) / av.length : null;
     return {
       text: `Apenas ${p.twin.agencies.length} agência está cadastrada (${p.agency.name}); uma comparação exige ao menos duas.`,
-      items: [{ label: p.agency.name, status: 'ok', detail: `Disponibilidade média na última hora: ${mean == null ? '—' : mean.toFixed(2) + '%'} (dados simulados/sintéticos)` }],
+      items: [{ label: p.agency.name, status: 'ok', detail: `Disponibilidade média na última hora: ${mean == null ? '—' : mean.toFixed(2) + '%'}${p.simulate ? ' (dados simulados/sintéticos)' : ''}` }],
     };
   },
 
@@ -160,7 +160,8 @@ export function incidentReport(p, session, periodStart, now = Date.now()) {
   const lines = [
     `# Relatório técnico de incidentes — ${p.agency.name}`,
     '',
-    `> **MODO DEMONSTRAÇÃO — DADOS SIMULADOS.** Nenhum dado deste relatório provém de equipamento real.`,
+    p.simulate ? '> **MODO DEMONSTRAÇÃO — DADOS SIMULADOS.** Nenhum dado deste relatório provém de equipamento real.'
+      : '> **MODO INTEGRAÇÃO.** Dados recebidos de gateways de integração. Ambiente sujeito a homologação.',
     '',
     `- Período: ${d(periodStart)} a ${d(now)} (${p.agency.timezone})`,
     `- Gerado por: ${session.user} (${session.role})`,
