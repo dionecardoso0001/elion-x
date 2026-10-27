@@ -1,0 +1,21 @@
+{
+  "name": "sentinel-3d",
+  "version": "0.1.0",
+  "description": "SENTINEL 3D — Digital Twin Intelligence Platform (MVP demonstrativo com telemetria simulada)",
+  "private": true,
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "three": "0.185.1"
+  },
+  "license": "MIT",
+  "author": "Dione Cardoso"
+}

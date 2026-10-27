@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sentinel 3D — Digital Twin</title>
+  <meta name="description" content="SENTINEL 3D — plataforma de Digital Twin para monitoramento de agências. Modo demonstração com dados simulados.">
+  <link rel="stylesheet" href="/css/app.css">
+  <script type="importmap">{"imports":{"three":"/vendor/three/build/three.module.js","three/addons/":"/vendor/three/examples/jsm/"}}</script>
+  <script type="module" src="/js/main.mjs"></script>
+</head>
+<body>
+  <a class="skip" href="#stage">Pular para o conteúdo principal</a>
+  <div class="demo-banner" role="note">
+    <strong>MODO DEMONSTRAÇÃO — DADOS SIMULADOS</strong>
+    <span>Planta e inventário fictícios · nenhum equipamento físico conectado</span>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <div class="brand-name">SANTANDER SENTINEL 3D</div>
+        <div class="brand-sub">Digital Twin Intelligence Platform</div>
+      </div>
+    </div>
+    <label class="agency-select">
+      <span class="sr-only">Agência</span>
+      <select id="agency"></select>
+    </label>
+    <ul class="kpis" id="kpis" aria-label="Indicadores gerais"></ul>
+    <div class="top-actions">
+      <button class="btn ghost" id="btn-ai" aria-expanded="false" aria-controls="ai-drawer">SENTINEL AI</button>
+      <label class="role">
+        <span>Perfil</span>
+        <select id="role" aria-label="Perfil de demonstração"></select>
+      </label>
+    </div>
+  </header>
+
+  <div class="shell" id="shell">
+    <nav class="sidenav" aria-label="Navegação principal">
+      <ul class="menu" id="menu"></ul>
+      <section class="filters" aria-labelledby="f-title">
+        <h2 id="f-title" class="side-title">Filtros operacionais</h2>
+        <fieldset id="f-category"><legend>Categoria</legend></fieldset>
+        <fieldset id="f-status"><legend>Condição</legend></fieldset>
+      </section>
+      <section class="sim" aria-labelledby="sim-title">
+        <h2 id="sim-title" class="side-title">Simulador de cenários <span class="tag-demo">DEMO</span></h2>
+        <ul id="scenarios" class="scenario-list"></ul>
+        <button class="btn small ghost" id="sc-reset">Encerrar todos</button>
+      </section>
+    </nav>
+
+    <main id="stage" class="stage" tabindex="-1">
+      <section id="view-twin" class="view twin-view" aria-label="Gêmeo Digital 3D">
+        <div class="twin-toolbar" role="toolbar" aria-label="Modos de navegação">
+          <div class="seg" id="modes">
+            <button data-mode="aerial" aria-pressed="true">Aérea</button>
+            <button data-mode="fpv" aria-pressed="false">Primeira pessoa</button>
+            <button data-mode="xray" aria-pressed="false">Transparente</button>
+            <button data-mode="plan" aria-pressed="false">Planta 2D</button>
+          </div>
+          <div class="seg">
+            <button id="t-deps" aria-pressed="false" title="Exibir conexões e dependências técnicas">Dependências</button>
+            <button id="t-labels" aria-pressed="true">Ambientes</button>
+            <button id="t-expand" aria-pressed="false" title="Ampliar o gêmeo digital">Ampliar</button>
+          </div>
+          <span id="vr-slot" class="vr-slot"></span>
+          <span class="fps" id="fps" title="Quadros por segundo medidos neste navegador">— fps</span>
+        </div>
+        <div class="canvas-wrap" id="canvas-wrap">
+          <canvas id="twin-canvas" aria-label="Agência demonstrativa em 3D. Use a lista lateral ou a planta 2D como alternativa acessível."></canvas>
+          <div id="labels-layer" class="labels-layer" aria-hidden="true"></div>
+          <div id="plan2d" class="plan2d" hidden></div>
+          <div class="fpv-hint" id="fpv-hint" hidden>
+            <strong>Primeira pessoa</strong> · clique para entrar · W A S D / setas para andar · Shift corre · mouse olha · clique seleciona o equipamento na mira · Esc libera o cursor
+          </div>
+          <div class="crosshair" id="crosshair" hidden aria-hidden="true"></div>
+          <div class="legend" id="legend" aria-label="Legenda de estados"></div>
+          <div class="disclaimer" id="disclaimer"></div>
+        </div>
+      </section>
+      <section id="view-page" class="view page-view" hidden></section>
+    </main>
+
+    <aside class="context" id="context" aria-label="Painel contextual" aria-live="polite"></aside>
+  </div>
+
+  <footer class="timeline" aria-label="Linha do tempo de eventos e incidentes">
+    <div class="tl-head">Linha do tempo</div>
+    <ol id="timeline" class="tl-list"></ol>
+  </footer>
+
+  <section id="ai-drawer" class="ai-drawer" hidden aria-label="Assistente SENTINEL AI">
+    <header>
+      <div>
+        <strong>SENTINEL AI</strong>
+        <small>Consulta somente dados autorizados ao seu perfil · respostas derivadas dos registros</small>
+      </div>
+      <button class="btn icon ghost" id="ai-close" aria-label="Fechar assistente">✕</button>
+    </header>
+    <div class="ai-log" id="ai-log" aria-live="polite"></div>
+    <form id="ai-form" class="ai-form">
+      <label class="sr-only" for="ai-input">Pergunta</label>
+      <input id="ai-input" maxlength="500" autocomplete="off" placeholder="Ex.: Quais equipamentos apresentam problemas?">
+      <button class="btn primary" type="submit">Enviar</button>
+    </form>
+  </section>
+
+  <div id="toasts" class="toasts" aria-live="assertive"></div>
+  <noscript><p class="noscript">O SENTINEL 3D requer JavaScript habilitado.</p></noscript>
+</body>
+</html>
