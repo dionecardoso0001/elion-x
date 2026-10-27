@@ -8,7 +8,8 @@
   "scripts": {
     "start": "node server.mjs",
     "dev": "node --watch server.mjs",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "build:standalone": "node scripts/build-standalone.mjs"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -17,5 +18,8 @@
     "three": "0.185.1"
   },
   "license": "MIT",
-  "author": "Dione Cardoso"
+  "author": "Dione Cardoso",
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
 }

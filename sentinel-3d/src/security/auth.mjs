@@ -2,7 +2,6 @@
 // Em produção, a sessão vem do IdP corporativo (OIDC/SAML com MFA); este módulo
 // mantém apenas a camada de autorização, que é independente do provedor.
 
-import crypto from 'node:crypto';
 
 export const ROLES = {
   observador: {
@@ -27,7 +26,9 @@ export class Sessions {
   constructor() { this.map = new Map(); }
   create(role) {
     if (!ROLES[role]) return null;
-    const sid = crypto.randomBytes(24).toString('base64url');
+    // Web Crypto: disponível no Node ≥ 20 e no navegador (núcleo compartilhado)
+    const bytes = globalThis.crypto.getRandomValues(new Uint8Array(24));
+    const sid = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     const s = { sid, role, user: `demo.${role}`, createdAt: Date.now(), agencies: ['AG-DEMO-001'] };
     this.map.set(sid, s);
     return s;

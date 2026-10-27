@@ -5,12 +5,28 @@
 
 Gêmeo digital 3D de uma agência bancária demonstrativa, com planta, numeração de ambientes e inventário seguindo o **Mapa de Ativos · Visão Conceitual** fornecido, com monitoramento de CFTV, rede, servidores, energia, alarmes e incêndio. O núcleo é um motor de regras, correlação por grafo de dependências e diagnóstico explicável (fatos, hipótese, confiança por critérios, recomendações e incertezas).
 
-## Executar
+## Como abrir (3 formas)
+
+| Forma | Como | Quando usar |
+|---|---|---|
+| **1. Arquivo único (mais simples)** | Baixe `standalone/sentinel-3d.html` e abra com **duplo clique** no Chrome, Edge ou Firefox | Demonstração em qualquer computador, sem instalar nada e sem internet |
+| **2. Servidor local** | `npm install && npm start` → http://localhost:8730 | Persistência em disco, ingestão de gateway real, auditoria em arquivo |
+| **3. Link hospedado** | Página privada no claude.ai (o dono compartilha pelo menu *Share*) | Abrir no navegador ou no celular sem baixar |
+
+> **Não abra `public/index.html` diretamente**: aquele arquivo é a interface do *servidor* e, aberto
+> por duplo clique, o navegador bloqueia os módulos (tela vazia). Para duplo clique use o item 1.
+> No GitHub, um `.html` aparece como código-fonte: use **Download raw** e abra o arquivo baixado.
+
+A versão de arquivo único roda o **mesmo núcleo** do servidor (`src/http/api.mjs`, motor, regras, RBAC) dentro do
+navegador. Os dados vivem enquanto a aba estiver aberta. Gerar de novo após alterar o código: `npm run build:standalone`.
+
+## Executar (servidor)
 ```bash
 cd sentinel-3d
 npm install        # única dependência: three@0.185.1
 npm start          # http://127.0.0.1:8730
-npm test           # 28 testes: motor, cenários A–H, aderência ao mapa, regressões, API, autorização
+npm test           # 30 testes: motor, cenários A–H, aderência ao mapa, regressões, API, autorização, build autônomo
+npm run build:standalone   # gera standalone/sentinel-3d.html (arquivo único)
 ```
 Requer Node.js ≥ 20. A sessão inicia como **Operador NOC**; troque o perfil no topo.
 
@@ -31,8 +47,8 @@ Os dados de execução (incidentes, eventos, auditoria) ficam em `sentinel-3d/da
 6. Perfil **Observador**: áreas restritas trancadas e ocorrência redigida.
 
 ## O que foi verificado
-- `npm test`: **28/28** aprovados, incluindo testes de regressão que **falham sem a correção** de incidentes transitórios.
-- Chromium (Playwright), em todos os modos de navegação, nas 12 seções e na troca de perfil: **sem erros de console**.
+- `npm test`: **30/30** aprovados, incluindo testes de regressão que **falham sem a correção** de incidentes transitórios.
+- Chromium (Playwright), em todos os modos de navegação, nas 12 seções e na troca de perfil: **sem erros de console**, tanto pelo servidor quanto abrindo `standalone/sentinel-3d.html` via `file://` (duplo clique), incluindo cenários, assistente, download de relatório e perfil Observador.
 - FPS: **não verificado em GPU real.** O ambiente de desenvolvimento só tem renderização por software (1–5 FPS). A interface mostra o FPS medido na máquina do operador.
 
 ## Documentação

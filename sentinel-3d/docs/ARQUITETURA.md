@@ -50,6 +50,8 @@
                                              └──────────────────────────────────────────┘
 ```
 
+**Modos de execução.** As rotas, a validação e a autorização ficam em `src/http/api.mjs`, um núcleo sem dependências de Node. O `server.mjs` é só o adaptador HTTP (cookies, CSRF, SSE, cabeçalhos, estáticos). A versão de arquivo único (`scripts/build-standalone.mjs`) executa o mesmo núcleo no navegador, com CSP por hash e `connect-src 'none'`. Um teste garante que o núcleo não importa módulos do Node.
+
 O navegador **nunca** acessa dispositivos. Toda telemetria entra pelo servidor, seja do simulador ou do gateway.
 
 ## 3. Stack e decisões (ADR resumido)

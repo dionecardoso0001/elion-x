@@ -12,7 +12,7 @@ const STATUS_TXT = { aberto: 'Aberto', reconhecido: 'Reconhecido', normalizado: 
 export function renderPanel(app, { force = false } = {}) {
   const el = document.getElementById('context');
   // não atropela o operador digitando
-  if (!force && (el.contains(document.activeElement) && document.activeElement.matches('textarea,input') || [...el.querySelectorAll('textarea')].some((t) => t.value))) return;
+  if (!force && (el.contains(document.activeElement) && document.activeElement.matches('textarea,input') || [...el.querySelectorAll('textarea,input')].some((t) => t.value))) return;
   const scroll = el.scrollTop;
   const sel = app.selected;
   if (sel?.type === 'device') return renderDevice(app, el, sel.id).then(() => { el.scrollTop = scroll; });
@@ -173,7 +173,8 @@ async function renderDevice(app, el, id) {
     data.events.length ? h('section', { class: 'ctx-sec' }, h('h3', { text: 'Eventos recentes' }), h('ul', { class: 'list' }, data.events.slice().reverse().slice(0, 8).map((e) => h('li', { class: 'row-sub', text: `${fmtTime(e.ts)} — ${e.text}` })))) : null,
     h('div', { class: 'actions' },
       h('button', { class: 'btn primary', onclick: () => app.focus(d.id) }, 'Ir até no 3D'),
-      app.can('device:maintenance') ? h('button', { class: 'btn', onclick: () => toggleMaintenance(app, d) }, d.maintenance ? 'Encerrar manutenção' : 'Marcar manutenção') : null),
+      app.can('device:maintenance') && d.maintenance ? h('button', { class: 'btn', onclick: () => toggleMaintenance(app, d, '') }, 'Encerrar manutenção') : null),
+    app.can('device:maintenance') && !d.maintenance ? maintenanceForm(app, d) : null,
   );
 }
 
@@ -195,10 +196,15 @@ function trendBlock(tr) {
     sparkline(tr.series.map((p) => ({ t: p.t, v: p.v })), '#eab308'), h('p', { class: 'row-sub', text }));
 }
 
-async function toggleMaintenance(app, d) {
+// Formulário no próprio painel (sem prompt(): diálogos nativos são bloqueados em ambientes incorporados)
+function maintenanceForm(app, d) {
+  const input = h('input', { id: `mnt-${d.id}`, maxlength: 200, placeholder: 'Motivo (registrado na auditoria)', 'aria-label': 'Motivo da manutenção' });
+  return h('form', { class: 'actions', onsubmit: (e) => { e.preventDefault(); if (input.value.trim().length < 3) { toast('Informe o motivo da manutenção (mín. 3 caracteres).', 'high'); input.focus(); return; } toggleMaintenance(app, d, input.value.trim()); } },
+    input, h('button', { class: 'btn', type: 'submit' }, 'Marcar manutenção'));
+}
+
+async function toggleMaintenance(app, d, note) {
   const on = !d.maintenance;
-  const note = on ? prompt('Motivo da manutenção (registrado na auditoria):', '') : '';
-  if (on && note === null) return;
   try { await api.post(`/api/devices/${d.id}/maintenance`, { on, note }); toast(`${d.id}: manutenção ${on ? 'iniciada' : 'encerrada'}`); renderPanel(app, { force: true }); }
   catch (e) { toast(e.message, 'critical'); }
 }

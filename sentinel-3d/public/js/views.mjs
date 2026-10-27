@@ -1,6 +1,6 @@
 // Páginas do menu lateral. Todos os números vêm da API (registros simulados/sintéticos rotulados).
 
-import { api } from './api.mjs';
+import { api, download } from './api.mjs';
 import { h, statusBadge, sevTag, fmtAge, fmtTime, fmtDur, fmtValue, toast, STATUS_ORDER } from './util.mjs';
 import { lineChart, barChart, timeBars } from './charts.mjs';
 import { videoCanvas } from './panel.mjs';
@@ -202,8 +202,8 @@ function historyView(app, root) {
   const body = h('div', { class: 'card' });
   fillRoot(root, pageHead('Histórico e Relatórios', 'Eventos persistidos (retenção configurável) e relatórios técnicos derivados dos registros.',
     select('Categoria', [['', 'Todas'], ...Object.entries(app.meta.categories).map(([k, v]) => [k, v.label]), ['simulacao', 'Simulação']], f.category, (v) => { f.category = v; historyView(app, root); }),
-    h('a', { class: 'btn', href: '/api/reports/incidents?period=today', download: '' }, 'Relatório de hoje (.md)'),
-    h('a', { class: 'btn', href: '/api/reports/incidents?period=7d', download: '' }, 'Relatório 7 dias (.md)')), body);
+    h('button', { class: 'btn', onclick: () => download('/api/reports/incidents?period=today').catch((e) => toast(e.message, 'critical')) }, 'Relatório de hoje (.md)'),
+    h('button', { class: 'btn', onclick: () => download('/api/reports/incidents?period=7d').catch((e) => toast(e.message, 'critical')) }, 'Relatório 7 dias (.md)')), body);
   api.get(`/api/events?limit=300&category=${f.category}`).then((list) => {
     body.replaceChildren(list.length ? h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' },
       h('thead', {}, h('tr', {}, ['Horário', 'Tipo', 'Severidade', 'Categoria', 'Equipamento', 'Descrição'].map((t) => h('th', { text: t })))),

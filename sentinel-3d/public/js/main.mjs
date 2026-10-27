@@ -1,6 +1,6 @@
 // SENTINEL 3D — inicialização e estado da aplicação.
 
-import { api, connectStream } from './api.mjs';
+import { api, connectStream, download } from './api.mjs';
 import { h, $, statusBadge, statusIcon, fmtTime, toast, throttle, STATUS_ORDER } from './util.mjs';
 import { renderPanel } from './panel.mjs';
 import { MENU, renderView } from './views.mjs';
@@ -79,7 +79,7 @@ app.ask = async (q, log, { greet } = {}) => {
     if (r.note) m.append(h('p', { class: 'row-sub', text: r.note }));
     for (const a of r.actions || []) {
       if (a.type === 'focus') { m.append(h('button', { class: 'btn small', type: 'button', onclick: () => app.focus(a.deviceId), text: a.label })); if (a.auto) app.focus(a.deviceId); }
-      if (a.type === 'download') m.append(h('a', { class: 'btn small', href: a.href, download: '', text: a.label }));
+      if (a.type === 'download') m.append(h('button', { class: 'btn small', type: 'button', onclick: () => download(a.href).catch((e) => toast(e.message, 'critical')), text: a.label }));
     }
     m.append(h('div', { class: 'src', text: `${r.tool} · ${r.source}` }));
   } catch (e) { add('bot', `Erro: ${e.message}`); }
