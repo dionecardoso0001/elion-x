@@ -62,7 +62,15 @@ Requer Node.js ≥ 20. A sessão inicia como **Operador NOC**; troque o perfil n
 
 Os dados de execução (incidentes, eventos, auditoria) ficam em `sentinel-3d/data/`, fora do versionamento. Para recomeçar do zero, apague essa pasta.
 
-## Primeira demonstração (3 min)
+## Modo Apresentação (tour guiado)
+
+O botão **▶ Apresentação** no topo conduz um tour de 11 passos que executa ações reais da interface:
+gêmeo digital → Suporte Técnico → camada Desempenho → cenários A (câmera), B (switch/correlação),
+G (failover do link), H (degradação térmica) e D (incêndio) → assistente SENTINEL AI → primeira pessoa.
+Use **Próximo/Anterior** (ou as setas ←/→), ou **Automático** para avançar sozinho. Ao sair, os cenários são encerrados.
+Os incidentes exibidos são produzidos pelo motor a partir da telemetria simulada — nada é encenado.
+
+## Primeira demonstração manual (3 min)
 1. Gêmeo 3D na visão aérea: gire, aproxime e clique num marcador.
 2. Simulador → **B · Falha em switch**. Em ~8 s, o SW-03 fica desconectado, as câmeras ficam roxas e abre **um** incidente com causa raiz provável e confiança alta; a câmera voa até o switch.
 3. **Transparente** + **Dependências**: veja os cabos afetados em vermelho.

@@ -27,8 +27,10 @@ export function diagnose(group, ctx) {
 
   switch (group.kind) {
     case 'fire': {
-      const zoneRooms = [...new Set(group.members.map((id) => roomsById.get(byId.get(id).room)?.name))];
-      const cams = ctx.devices.filter((d) => d.type === 'camera' && group.members.some((m) => byId.get(m).room === d.room)).map((d) => d.id);
+      // região = onde estão os DETECTORES em alarme; a sala da central não é a zona do evento
+      const detectors = group.members.filter((id) => byId.get(id).type !== 'facp');
+      const zoneRooms = [...new Set((detectors.length ? detectors : group.members).map((id) => roomsById.get(byId.get(id).room)?.name))];
+      const cams = ctx.devices.filter((d) => d.type === 'camera' && detectors.some((m) => byId.get(m).room === d.room)).map((d) => d.id);
       return {
         ...base, kind: 'fire', severity: 'critical', priority: 'P1',
         title: `Sinal de alarme de incêndio — ${zoneRooms.join(', ')}`,

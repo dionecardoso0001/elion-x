@@ -5,6 +5,7 @@ import { h, $, statusBadge, statusIcon, fmtTime, toast, throttle, STATUS_ORDER }
 import { renderPanel } from './panel.mjs';
 import { MENU, renderView } from './views.mjs';
 import { Plan2D } from './twin/plan2d.mjs';
+import { startTour } from './tour.mjs';
 
 const app = {
   meta: null, me: null, layout: null, agencies: [], statics: new Map(), deps: [],
@@ -35,6 +36,7 @@ app.focus = (id) => {
   app.scene.flyTo(id);
   app.scene.select(id);
 };
+app.setMode = (mode) => { if (app.view !== 'twin') app.go('twin'); if (app.scene || mode === 'plan') setMode(mode); };
 app.go = (view) => {
   app.view = view;
   clearInterval(app.pageTimer);
@@ -267,6 +269,7 @@ async function boot() {
   const drawer = $('#ai-drawer');
   const setDrawer = (open) => { drawer.hidden = !open; $('#btn-ai').setAttribute('aria-expanded', open); if (open) { if (!$('#ai-log').childElementCount) app.ask('', $('#ai-log'), { greet: true }); $('#ai-input').focus(); } };
   $('#btn-ai').addEventListener('click', () => setDrawer(drawer.hidden));
+  $('#btn-tour').addEventListener('click', () => startTour(app));
   $('#ai-close').addEventListener('click', () => setDrawer(false));
   $('#ai-form').addEventListener('submit', (e) => { e.preventDefault(); const i = $('#ai-input'); app.ask(i.value, $('#ai-log')); i.value = ''; });
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && !drawer.hidden) setDrawer(false); });

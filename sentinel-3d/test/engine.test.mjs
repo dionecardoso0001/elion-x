@@ -118,6 +118,8 @@ test('cenário D — incêndio: P1, protocolo de escalonamento e confirmação h
   assert.equal(inc.priority, 'P1');
   assert.ok(inc.diagnosis.protocol.steps.length >= 4);
   assert.equal(inc.diagnosis.confidence, 'requer confirmação humana');
+  assert.match(inc.title, /Recepção/);
+  assert.doesNotMatch(inc.title, /Administrativo/, 'a sala da central de incêndio não é a zona do alarme');
   assert.ok(inc.diagnosis.facts.some((f) => /Nenhum comando de atuação/.test(f)));
 });
 
