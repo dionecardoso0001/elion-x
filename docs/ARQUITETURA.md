@@ -145,7 +145,9 @@ pega a versão nova — e isso é garantido explicitamente no servidor de estát
 const noCache = ['.html', '.css', '.js', '.json'].includes(ext) || filePath.endsWith('index.html');
 ```
 
-O segundo ganho é o **clone**: três dependências npm significam que `npm install`
+O segundo ganho é o **clone**: quatro dependências npm (a quarta é o runtime de visão
+da Sentinela, `@mediapipe/tasks-vision` — Google, Apache-2.0, sem dependências
+transitivas, versão fixada) significam que `npm install`
 resolve em segundos e que a superfície de supply chain é quase nula. Numa plataforma
 que lê Gmail, WhatsApp e biometria da família, cada dependência transitiva seria uma
 porta a mais.

@@ -21,7 +21,7 @@
    traz DADO vai para a rede, sempre, sem exceção — e, se a rede falhar,
    falha à vista do operador em vez de responder com passado.
    ═══════════════════════════════════════════════════════════════════════ */
-const VERSAO = 'elion-x-v1';
+const VERSAO = 'elion-x-v2';
 
 /* A casca: o que a plataforma precisa para desenhar a si mesma. Nada aqui
    contém dado do operador. */
@@ -31,6 +31,10 @@ const CASCA = [
   './assets/app.css',
   './assets/elion.png',
   './manifest.webmanifest',
+  // SENTINELA: o console precisa abrir mesmo sem rede (no carro o sinal cai)
+  './sentinela.html',
+  './assets/sentinela.css',
+  './sentinela.webmanifest',
 ];
 
 self.addEventListener('install', ev => {
@@ -45,9 +49,12 @@ self.addEventListener('install', ev => {
 
 self.addEventListener('activate', ev => {
   ev.waitUntil((async () => {
-    // some com as versões antigas: cache velho é como código morto que ainda roda
+    // some com as versões antigas: cache velho é como código morto que ainda roda.
+    // EXCEÇÃO: o cache de modelos da Sentinela (elx-sentinela-*) tem dono — a
+    // própria página, que confere o SHA-256 de cada modelo a cada carga. Apagá-lo
+    // aqui jogaria fora ~16 MB e o modo offline a cada atualização da plataforma.
     const nomes = await caches.keys();
-    await Promise.all(nomes.filter(n => n !== VERSAO).map(n => caches.delete(n)));
+    await Promise.all(nomes.filter(n => n !== VERSAO && !n.startsWith('elx-sentinela-')).map(n => caches.delete(n)));
     await self.clients.claim();
   })());
 });
@@ -67,6 +74,7 @@ self.addEventListener('fetch', ev => {
   try { url = new URL(req.url); } catch { return; }
   if (url.origin !== self.location.origin) return;     // recursos de fora: deixo o navegador cuidar
   if (trazDado(url)) return;                           // dado do operador: SEMPRE da rede
+  if (url.pathname.startsWith('/assets/vendor/modelos/')) return;  // modelos: cache próprio da Sentinela, com SHA-256
 
   /* Casca: rede primeiro, cache como rede de segurança. Nesta ordem porque a
      plataforma muda com frequência e servir a versão de ontem esconderia as

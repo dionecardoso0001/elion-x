@@ -1648,6 +1648,8 @@
             if (/(seu |sua |teu |tua |forma |vers[ãa]o |modo |virar? |assumir? |mostrar? )?(rosto|face|humaniza|human[oa]|cara humana|ciborgue|avatar)/.test(t)
                 && !/reconhec|cadastr|identific|quem [ée]/.test(t)) return 'rosto';
             if (/esfera|n[úu]cleo|bola|orbe|forma original|forma neural/.test(t)) return 'esfera';
+            // SENTINELA antes de 'camera' — mesma regra e mesmo motivo do canonScreen do servidor
+            if (/sentinela|safer.?x|modo motorista|motorista|tr[âa]nsito|anticolis|fadiga|sonol[êe]ncia|cftv|vigil[âa]ncia (por|da|de) c[âa]mera|[áa]rea restrita|objeto abandonado|vis[ãa]o t[áa]tica/.test(t)) return 'sentinela';
             if (/c[âa]m[ae]ra|vis[ãa]o|olho|sensor [óo]ptico|webcam/.test(t)) return 'camera';
             if (/whats|zap/.test(t)) return 'whatsapp';
             if (/not[íi]cia|news|manchete|jornal|\bintel\b/.test(t)) return 'noticias';
@@ -1684,6 +1686,7 @@
             case 'camera': ELX.screens.open('camera'); return 'Câmera ativada no monitor óptico, Senhor — sensor ligado. Ainda não analisei a cena; se quiser saber o que estou vendo, é só pedir. Confirme que a câmera abriu.';
             case 'whatsapp': ELX.screens.open('whatsapp'); return 'Painel do WhatsApp aberto no Visor. Confirme ao operador.';
             case 'brain': ELX.screens.open('brain'); return 'Painel de Controle — Segundo Cérebro aberto. Confirme que o grafo de nós está na tela.';
+            case 'sentinela': ELX.screens.open('sentinela'); return 'Console SENTINELA aberto em janela própria — visão computacional tática: vigilância, modo motorista contra fadiga e modo trânsito anticolisão. Confirme em uma frase e diga que ele escolhe a missão e clica em INICIAR OPERAÇÃO.';
             case 'market': {
               const symbol = (q || 'IBOV').toUpperCase().replace(/\s+/g, '');
               ELX.screens.open('market', { symbol });
@@ -1698,7 +1701,7 @@
             case 'conselho': ELX.screens.open('council'); return 'Abri o seletor do Conselho de Decisão. Se já tiver a decisão, posso convocar direto.';
             case 'curso': { const d = await fetch('/api/ia-sem-medo').then(x => x.json()).catch(() => null); if (d && d.url) ELX.web?.open(d.url, 'IA SEM MEDO · Advanced Tech TI'); return d && d.kb ? `${d.kb}\n\nO site abriu no Visor. Apresente como garoto-propaganda, fiel ao conteúdo.` : 'Abri o site do curso IA SEM MEDO no Visor, Senhor.'; }
             case 'site': { let u = q; if (!u) return 'Para abrir um site preciso do endereço, Senhor. Qual site abro?'; if (!/^https?:\/\//i.test(u)) u = 'https://' + u.replace(/^\/+/, ''); ELX.web?.open(u, ''); return `Site aberto no Visor: ${u}.`; }
-            default: return `Não reconheci a tela "${a.screen}", Senhor. Posso abrir: câmera, whatsapp, notícias, clima, agenda, segundo cérebro, investimentos, carteira, e-mails, conselho ou o curso IA Sem Medo.`;
+            default: return `Não reconheci a tela "${a.screen}", Senhor. Posso abrir: câmera, sentinela, whatsapp, notícias, clima, agenda, segundo cérebro, investimentos, carteira, e-mails, conselho ou o curso IA Sem Medo.`;
           }
         }
         case 'close_screen': {
@@ -1708,6 +1711,7 @@
             if (/\btudo\b|todas|geral/.test(t)) return 'all';
             // "fecha o rosto" = voltar à esfera
             if (/rosto|face|humaniza|human[oa]|avatar|ciborgue/.test(t) && !/reconhec|cadastr|identific/.test(t)) return 'rosto';
+            if (/sentinela|safer.?x|modo motorista|motorista|tr[âa]nsito|vis[ãa]o t[áa]tica/.test(t)) return 'sentinela';
             if (/c[âa]m[ae]ra|vis[ãa]o|olho|sensor|webcam/.test(t)) return 'camera';
             if (/whats|zap/.test(t)) return 'whatsapp';
             if (/segundo c[ée]rebro|c[ée]rebro|cerebro|painel de controle|\bbrain\b|grafo/.test(t)) return 'brain';

@@ -24,6 +24,12 @@
       "url": "./index.html?modo=live"
     },
     {
+      "name": "Sentinela — visão computacional tática",
+      "short_name": "SENTINELA",
+      "description": "Vigilância com IA, monitor de fadiga do motorista e alerta de colisão",
+      "url": "./sentinela.html"
+    },
+    {
       "name": "Painel de Controle",
       "short_name": "Painel",
       "description": "Segundo cérebro — grafo de conhecimento do ELION",

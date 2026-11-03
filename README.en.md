@@ -29,9 +29,9 @@ own machine.
 
 | | |
 |---|---|
-| **49** capabilities | **37** API routes |
-| **39** external services | **~22k** lines of code |
-| **3** npm dependencies | **0** frameworks |
+| **49** capabilities | **39** API routes |
+| **40** external services | **~27k** lines of code |
+| **4** npm dependencies | **0** frameworks |
 
 ---
 
@@ -95,6 +95,22 @@ cp operador.exemplo.json data/operador.json
 ```
 
 Diagnostics: `GET /api/status`
+
+### SENTINELA — tactical computer vision
+
+`/sentinela.html` is an on-device computer-vision console with the **SAFER-X** agent,
+running on a PC webcam or a phone camera, in three missions: **SENTINELA**
+(objects, restricted-zone intrusion, abandoned/forgotten objects with owner tracking,
+object removal, falls, running, raised hands, crowding, statistical anomalies),
+**DRIVER** (PERCLOS fatigue, microsleep, yawning, head drop, eyes off the road, phone
+in hand, possible sudden illness — loud siren plus a voice ordering the driver to pull
+over) and **TRAFFIC** (time-to-collision, shrinking gap, pedestrian/animal/object in
+the lane). Alarms never depend on the network or an LLM; Claude is an optional second
+opinion that flags where the local detector disagrees with the scene. On a phone, use
+the HTTPS tunnel (`ELION-X Mobile.bat`) — cameras require HTTPS. Algorithms, the
+provenance of every alarm threshold and the limitations are documented (in Portuguese)
+in [docs/SENTINELA.md](docs/SENTINELA.md). It is an attention aid — not a certified
+ADAS/DMS, it does not brake and it does not make medical diagnoses.
 
 ---
 
@@ -199,7 +215,8 @@ Two decisions worth copying:
 | Streaming | Server-Sent Events | Word-by-word, interruptible responses |
 | Persistence | JSON on disk | No database. State you can audit by eye |
 
-**Dependencies (3):** `pdf-parse` · `jszip` · `whatsapp-web.js`
+**Dependencies (4):** `pdf-parse` · `jszip` · `whatsapp-web.js` · `@mediapipe/tasks-vision`
+(SENTINELA's vision runtime — Google, Apache-2.0, no transitive dependencies, exact version pinned)
 
 ---
 

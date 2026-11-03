@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Defesa em profundidade: mesmo que algo injete script na página, ele não
+     consegue enviar quadro de câmera para fora — conexões só para a própria
+     plataforma, para os modelos do Google e para o runtime no CDN. -->
+<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'none'; connect-src 'self' https://storage.googleapis.com https://cdn.jsdelivr.net">
+<title>ELION-X · SENTINELA</title>
+<meta name="description" content="SENTINELA — visão computacional tática do ELION-X: vigilância com IA (objetos, área restrita, objeto abandonado, anomalias), monitor de fadiga e mal-estar do motorista e alerta de colisão no trânsito. Processamento no próprio aparelho.">
+<meta name="theme-color" content="#020604">
+<meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="sentinela.webmanifest">
+<link rel="icon" href="assets/elion.png">
+<link rel="apple-touch-icon" href="assets/elion.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/sentinela.css">
+</head>
+<body data-modo="sentinela" data-nivel="5">
+
+<div class="fx fx-grade" aria-hidden="true"></div>
+<div class="fx fx-ruido" aria-hidden="true"></div>
+<div class="fx fx-scan" aria-hidden="true"></div>
+<div class="fx fx-vinheta" aria-hidden="true"></div>
+<div id="flash" aria-hidden="true"></div>
+
+<!-- ▓▓ BOOT ▓▓ -->
+<section id="boot" role="dialog" aria-modal="true" aria-labelledby="bootTitulo">
+  <div class="boot-caixa">
+    <div class="boot-carimbo" aria-hidden="true">CONFIDENCIAL</div>
+    <pre class="boot-arte" aria-hidden="true">
+ ███████╗███████╗███╗   ██╗████████╗██╗███╗   ██╗███████╗██╗      █████╗
+ ██╔════╝██╔════╝████╗  ██║╚══██╔══╝██║████╗  ██║██╔════╝██║     ██╔══██╗
+ ███████╗█████╗  ██╔██╗ ██║   ██║   ██║██╔██╗ ██║█████╗  ██║     ███████║
+ ╚════██║██╔══╝  ██║╚██╗██║   ██║   ██║██║╚██╗██║██╔══╝  ██║     ██╔══██║
+ ███████║███████╗██║ ╚████║   ██║   ██║██║ ╚████║███████╗███████╗██║  ██║
+ ╚══════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝╚═╝  ╚═╝</pre>
+    <h1 id="bootTitulo">ELION<b>-X</b> <span>// SENTINELA · núcleo de visão tática</span></h1>
+    <p class="boot-sub">Agente <b>SAFER-X</b> · percepção em tempo real no próprio aparelho</p>
+
+    <ol id="bootLog" class="boot-log" aria-live="polite"></ol>
+    <div class="boot-barra" role="progressbar" aria-label="Carga do núcleo" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bootBarra"><i id="bootFill"></i></div>
+
+    <fieldset class="boot-modos">
+      <legend>Missão inicial</legend>
+      <label><input type="radio" name="modoInicial" value="sentinela" checked><span><b>◉ SENTINELA</b><small>vigilância · objetos · área restrita · abandono</small></span></label>
+      <label><input type="radio" name="modoInicial" value="motorista"><span><b>◉ MOTORISTA</b><small>fadiga · microssono · mal-estar · alarme e voz</small></span></label>
+      <label><input type="radio" name="modoInicial" value="transito"><span><b>◉ TRÂNSITO</b><small>colisão · pedestre · obstáculo · distância</small></span></label>
+    </fieldset>
+
+    <p id="bootErro" class="boot-erro" role="alert" hidden></p>
+    <button id="bootGo" class="btn-primario" disabled>◤ INICIAR OPERAÇÃO ◢</button>
+    <p class="boot-aviso">Nenhum quadro sai do aparelho sem ordem sua. A análise profunda (opcional) envia um único quadro ao servidor ELION-X.</p>
+  </div>
+</section>
+
+<!-- ▓▓ TOPO ▓▓ -->
+<header id="topo">
+  <a class="marca" href="./" title="Voltar à central ELION-X">
+    <span class="marca-nucleo" aria-hidden="true"><i></i></span>
+    <span class="marca-txt">ELION<b>-X</b> <em>// SENTINELA</em><small id="opCodigo">OPERAÇÃO —</small></span>
+  </a>
+  <nav class="modos" role="tablist" aria-label="Modo de operação">
+    <button role="tab" class="modo-tab" data-modo="sentinela" aria-selected="true">SENTINELA</button>
+    <button role="tab" class="modo-tab" data-modo="motorista" aria-selected="false">MOTORISTA</button>
+    <button role="tab" class="modo-tab" data-modo="transito" aria-selected="false">TRÂNSITO</button>
+  </nav>
+  <div class="defcon" id="defcon" data-lv="5" aria-live="polite">
+    <span class="dc-rot">AMEAÇA</span>
+    <span class="dc-degraus" aria-hidden="true"><i data-l="5"></i><i data-l="4"></i><i data-l="3"></i><i data-l="2"></i><i data-l="1"></i></span>
+    <b id="defconVal">5</b><span id="defconTxt">NOMINAL</span>
+  </div>
+  <div class="relogio"><span id="clk">--:--:--</span><small id="clkUtc">UTC --:--</small></div>
+</header>
+
+<!-- ▓▓ GRADE ▓▓ -->
+<main id="grade">
+
+  <aside class="col" id="colEsq" aria-label="Controles">
+    <section class="painel">
+      <h2>◈ SENSOR ÓPTICO</h2>
+      <label class="campo">Câmera<select id="selCamera"><option value="">padrão do modo</option></select></label>
+      <div class="linha-btns">
+        <button id="btnTrocarCam" class="btn">⇄ FRONTAL/TRASEIRA</button>
+        <button id="btnEspelhar" class="btn" aria-pressed="false">⇋ ESPELHAR</button>
+        <button id="btnNV" class="btn" aria-pressed="false" title="filtro de visão noturna — só na exibição; a IA vê a imagem original">◐ FILTRO NV</button>
+      </div>
+    </section>
+
+    <section class="painel">
+      <h2>◈ OPERAÇÃO</h2>
+      <div class="linha-btns">
+        <button id="btnPausar" class="btn" aria-pressed="false">❚❚ PAUSAR</button>
+        <button id="btnFoto" class="btn">⌖ CAPTURA</button>
+        <button id="btnGravar" class="btn" aria-pressed="false">● GRAVAR</button>
+        <button id="btnTelaCheia" class="btn">⛶ TELA CHEIA</button>
+        <button id="btnDiscreto" class="btn" aria-pressed="false" title="escurece a tela para não distrair quem dirige; alertas continuam">◑ DISCRETO</button>
+      </div>
+    </section>
+
+    <section class="painel">
+      <h2>◈ ALARME</h2>
+      <div class="linha-btns">
+        <button id="btnSilenciar" class="btn btn-aviso">🔇 SILENCIAR 30 s</button>
+        <button id="btnVoz" class="btn" aria-pressed="true">🗣 VOZ LIGADA</button>
+        <button id="btnTestarSirene" class="btn">◎ TESTAR SIRENE</button>
+      </div>
+      <label class="campo">Volume da sirene <output id="outVolume">90%</output><input id="rngVolume" type="range" min="0" max="100" value="90"></label>
+    </section>
+
+    <section class="painel modo-so" data-so="sentinela" id="ctlSentinela">
+      <h2>◈ PERÍMETROS</h2>
+      <div class="linha-btns">
+        <button id="btnZona" class="btn">✎ DESENHAR ZONA</button>
+        <label class="campo campo-inline">tipo
+          <select id="selTipoZona"><option value="restrita">restrita (intrusão)</option><option value="monitorada">monitorada (permanência)</option></select>
+        </label>
+      </div>
+      <div class="linha-btns" id="edicaoZona" hidden>
+        <button id="btnFecharZona" class="btn btn-ok">✔ FECHAR ZONA</button>
+        <button id="btnCancelarZona" class="btn">✕ CANCELAR</button>
+      </div>
+      <p class="dica" id="dicaZona" hidden>Toque/clique nos cantos da área sobre o vídeo (mínimo 3). Depois, FECHAR ZONA.</p>
+      <ul id="listaZonas" class="lista-zonas" aria-label="Zonas definidas"></ul>
+      <label class="chk"><input type="checkbox" id="chkPoses" checked> esqueletos (pose)</label>
+      <label class="chk"><input type="checkbox" id="chkCalor"> mapa de calor da normalidade</label>
+      <label class="chk"><input type="checkbox" id="chkDemo"> <span>PRESET DEMONSTRAÇÃO <small>(abandono 8 s, permanência 12 s)</small></span></label>
+    </section>
+
+    <section class="painel modo-so" data-so="motorista" id="ctlMotorista" hidden>
+      <h2>◈ CONDUTOR</h2>
+      <div class="linha-btns">
+        <button id="btnRecalibrar" class="btn">⟲ RECALIBRAR</button>
+        <a id="lnkSamu" class="btn btn-critico" href="tel:192">✚ LIGAR SAMU 192</a>
+      </div>
+      <label class="chk"><input type="checkbox" id="chkGPSmov" checked> <span>com GPS, só alarmar com o veículo em movimento</span></label>
+      <p class="dica">Fixe o celular num suporte, câmera frontal voltada para o rosto, sem cobrir a visão da via. Configure com o veículo parado — <b>não manuseie o aparelho em movimento</b> (CTB, art. 252).</p>
+    </section>
+
+    <section class="painel modo-so" data-so="transito" id="ctlTransito" hidden>
+      <h2>◈ CORREDOR</h2>
+      <label class="campo">Horizonte <output id="outHorizonte"></output><input id="rngHorizonte" type="range" min="30" max="80" value="55"></label>
+      <label class="campo">Largura no horizonte <output id="outLargTopo"></output><input id="rngLargTopo" type="range" min="4" max="50" value="16"></label>
+      <label class="campo">Largura na base <output id="outLargBase"></output><input id="rngLargBase" type="range" min="40" max="100" value="92"></label>
+      <label class="campo">Campo de visão da câmera <output id="outFov"></output><input id="rngFov" type="range" min="40" max="120" value="70"></label>
+      <p class="dica">Celular no para-brisa, câmera traseira para a via. Alinhe o trapézio à sua faixa. Distâncias são estimativas monoculares (~).</p>
+    </section>
+
+    <section class="painel">
+      <h2>◈ REGISTRO</h2>
+      <div class="linha-btns">
+        <button id="btnExportar" class="btn">⇩ EXPORTAR LOG</button>
+        <button id="btnLimpar" class="btn">⌫ LIMPAR</button>
+      </div>
+    </section>
+  </aside>
+
+  <section id="palco" aria-label="Visor tático">
+    <div id="visor">
+      <video id="video" playsinline muted autoplay aria-label="Imagem da câmera"></video>
+      <canvas id="hud" aria-hidden="true"></canvas>
+      <div id="banner" class="banner" role="status" hidden><b id="bannerTitulo"></b><span id="bannerDetalhe"></span></div>
+      <div id="sobreposicao" class="sobreposicao" hidden><div class="sob-caixa"><b id="sobTitulo">CARREGANDO</b><span id="sobTexto"></span><div class="boot-barra"><i id="sobFill"></i></div></div></div>
+      <button id="btnEstouBem" class="btn-estou-bem" hidden>ESTOU BEM — SILENCIAR</button>
+    </div>
+    <div id="ativas" class="ativas" aria-label="Alertas ativos"></div>
+    <div id="ticker" class="ticker" aria-hidden="true"></div>
+    <nav id="abas" class="abas" aria-label="Painéis">
+      <button data-aba="colDir" aria-pressed="true">◈ AGENTE &amp; TELEMETRIA</button>
+      <button data-aba="colEsq" aria-pressed="false">◈ CONTROLES</button>
+    </nav>
+  </section>
+
+  <aside class="col" id="colDir" aria-label="Agente e telemetria">
+    <section class="painel painel-agente">
+      <h2>◈ AGENTE SAFER-X <span id="agenteStatus" class="selo">LOCAL</span></h2>
+      <ol id="agenteLog" class="agente-log" aria-label="Registro do agente"></ol>
+      <div class="linha-btns">
+        <button id="btnAnalise" class="btn btn-primario-sm">◈ ANÁLISE PROFUNDA</button>
+        <label class="chk"><input type="checkbox" id="chkAutoAnalise"> <span>auto em evento crítico <small>(≥ 45 s)</small></span></label>
+      </div>
+      <div id="analiseCard" class="analise" hidden></div>
+    </section>
+    <section class="painel">
+      <h2>◈ TELEMETRIA <span id="telModo" class="selo"></span></h2>
+      <dl id="telemetria" class="telemetria"></dl>
+    </section>
+  </aside>
+</main>
+
+
+<footer id="rodape">
+  <span>FPS <b id="rFps">--</b></span>
+  <span>INF <b id="rInf">--</b></span>
+  <span>DELEGADO <b id="rBackend">--</b></span>
+  <span>RUNTIME <b id="rRuntime">--</b></span>
+  <span>GPS <b id="rGps">--</b></span>
+  <span class="priv">🔒 processamento no aparelho</span>
+</footer>
+
+<div id="srAlerta" class="sr-only" aria-live="assertive"></div>
+<div id="srInfo" class="sr-only" aria-live="polite"></div>
+
+<script type="module" src="assets/sentinela/nucleo.js"></script>
+<script>
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(e => console.warn('[pwa]', e.message)));
+}
+</script>
+</body>
+</html>

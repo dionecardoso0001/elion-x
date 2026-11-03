@@ -820,6 +820,34 @@
     if (e.data && e.data.elx === 'cyber-close') ELX.cyber.close();
   });
 
+  /* ═════════════════ SENTINELA — visão computacional tática ═════════════════
+     Janela própria de preferência (câmera, sirene e tela cheia sem disputar a
+     central). Pelo comando de VOZ não há gesto do usuário e o navegador bloqueia
+     a janela — aí abre no visor, como o Cyber: o iframe é da mesma origem, e
+     câmera e tela cheia têm allowlist padrão 'self'. Navegar a aba para lá
+     derrubaria a sessão do assistente — por isso isso nunca é feito. */
+  let sentinelaWin = null;
+  ELX.sentinela = {
+    open() {
+      try { sentinelaWin = window.open('/sentinela.html', 'elion-sentinela'); } catch { sentinelaWin = null; }
+      if (sentinelaWin) { ELX.toast('Sentinela aberta — escolha a missão e inicie a operação.', 'green'); return 'window'; }
+      webOpenLocal('/sentinela.html?v=' + Date.now(), 'SENTINELA · VISÃO COMPUTACIONAL TÁTICA');
+      return 'visor';
+    },
+    isOpen() { return !!(sentinelaWin && !sentinelaWin.closed) || (!wv.hidden && /sentinela\.html/.test(wvUrl)); },
+    close() {
+      let fechou = false;
+      if (sentinelaWin && !sentinelaWin.closed) { try { sentinelaWin.close(); } catch {} fechou = true; }
+      sentinelaWin = null;
+      if (!wv.hidden && /sentinela\.html/.test(wvUrl)) { wvHide(); fechou = true; }
+      return fechou;
+    },
+  };
+  // a marca da Sentinela, carregada no visor, pede o fechamento para cá (só da mesma origem)
+  window.addEventListener('message', e => {
+    if (e.origin === location.origin && e.data && e.data.elx === 'sentinela-close') ELX.sentinela.close();
+  });
+
   /* ═════════════════ CONTROLE UNIVERSAL DE TELAS — abrir/fechar por voz (sem mouse) ═════════════════ */
   ELX.screens = {
     // abre subtelas que NÃO chegam prontas por seus próprios eventos ui
@@ -839,6 +867,7 @@
         case 'whatsapp':      ELX.whatsapp.open(); break;
         case 'brain':         ELX.brain.open(); break;
         case 'cyber':         ELX.cyber.open(); break;
+        case 'sentinela':     ELX.sentinela.open(); break;
         case 'market':        ELX.market.study(opts.symbol || opts.query || ''); break;
         case 'council':       document.getElementById('qaCouncil')?.click(); break;
         case 'email_connect': ELX.email.connect(); break;
@@ -875,6 +904,9 @@
         case 'cyber':
           if (!ELX.cyber.close()) ELX.toast('O console de defesa cibernética não está aberto.', '');
           break;
+        case 'sentinela':
+          if (!ELX.sentinela.close()) ELX.toast('A Sentinela não está aberta nesta sessão.', '');
+          break;
         case 'whatsapp': case 'site': case 'market': case 'carteira':
         case 'email': case 'conselho': case 'curso': case 'visor':
           if (visorOpen) wvHide(); else ELX.toast('Não há painel aberto no visor.', '');
@@ -887,6 +919,7 @@
           ELX.monitor?.close();
           if (visorOpen) wvHide();
           ELX.brain.close();
+          ELX.sentinela.close();
           if (camOn) camStop();
           ELX.toast('Telas fechadas.', 'green');
           break;

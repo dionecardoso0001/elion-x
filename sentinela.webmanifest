@@ -1,0 +1,20 @@
+{
+  "name": "ELION-X · SENTINELA",
+  "short_name": "SENTINELA",
+  "description": "Visão computacional tática: vigilância com IA, monitor de fadiga do motorista e alerta de colisão no trânsito. Processamento no próprio aparelho.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "id": "./sentinela.html",
+  "start_url": "./sentinela.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#020604",
+  "theme_color": "#020604",
+  "categories": ["security", "utilities", "navigation"],
+  "icons": [
+    { "src": "assets/elion.png", "sizes": "256x256", "type": "image/png", "purpose": "any" },
+    { "src": "assets/elion-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/elion-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

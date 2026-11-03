@@ -26,9 +26,9 @@ continuamente temas de interesse — tudo executando **localmente**, na máquina
 
 | | |
 |---|---|
-| **49** capacidades | **37** rotas de API |
-| **39** serviços externos | **~22k** linhas de código |
-| **3** dependências npm | **0** frameworks |
+| **49** capacidades | **39** rotas de API |
+| **40** serviços externos | **~27k** linhas de código |
+| **4** dependências npm | **0** frameworks |
 
 ---
 
@@ -46,6 +46,7 @@ decisão e o defeito real que motivou cada uma delas.
 | **[Engenharia de prompts](docs/ENGENHARIA-DE-PROMPTS.md)** | O prompt montado por composição a cada mensagem, e a defesa contra injeção |
 | **[Integrações e chaves](docs/INTEGRACOES-E-CHAVES.md)** | Cada serviço externo, onde obter cada chave, e a defesa contra SSRF |
 | **[Operação](docs/OPERACAO.md)** | Como usar no dia a dia: o que pedir, os quadrantes, o terminal Cyber, o celular |
+| **[Sentinela](docs/SENTINELA.md)** | A visão computacional tática: algoritmos, a procedência de cada limiar de alarme, o que foi validado e o que não foi |
 
 > Os documentos citam **código real com caminho e linha**. Nenhum valor de chave,
 > segredo ou dado pessoal aparece em lugar nenhum deles.
@@ -56,6 +57,7 @@ decisão e o defeito real que motivou cada uma delas.
 
 - [Manual de engenharia](#-manual-de-engenharia)
 - [Como rodar](#como-rodar)
+- [Sentinela — visão computacional tática](#sentinela--visão-computacional-tática)
 - [Arquitetura](#arquitetura)
 - [Mapa de arquivos](#mapa-de-arquivos)
 - [As 49 capacidades](#as-49-capacidades)
@@ -92,6 +94,36 @@ cp operador.exemplo.json data/operador.json
 ```
 
 Diagnóstico: `GET /api/status`
+
+---
+
+## Sentinela — visão computacional tática
+
+Console de visão computacional com o agente **SAFER-X**, que roda **no próprio
+aparelho** — webcam do PC ou câmera do celular — em três missões:
+
+| Missão | O que entende | Resposta |
+|---|---|---|
+| **SENTINELA** | objetos, intrusão em área restrita, objeto abandonado/esquecido (com dono), retirada de objeto, queda, corrida, mãos erguidas, aglomeração, comportamento atípico | sirene, voz e registro com foto de evidência |
+| **MOTORISTA** | fadiga (PERCLOS), microssono, bocejo, cabeça pendendo, olhar fora da via, celular na mão, possível mal súbito | **sirene alta + voz mandando estacionar**, SAMU 192 |
+| **TRÂNSITO** | tempo até a colisão, distância encurtando, pedestre, animal e objeto na pista | sirene + "Freie!" |
+
+```bash
+node server.js              # → http://localhost:3001/sentinela.html
+npm run sentinela:modelos   # opcional: modelos offline (~16 MB, SHA-256 conferido)
+npm test                    # 76 testes da lógica de decisão
+```
+
+No celular: `ELION-X Mobile.bat` → `https://<túnel>/sentinela.html` (a câmera exige
+HTTPS) → *Adicionar à tela inicial*. Por voz: *"Elion, abre a sentinela"*.
+
+O alarme **não depende de rede nem de modelo de linguagem**: percepção (MediaPipe) e
+regras rodam no navegador, em milissegundos. O Claude entra depois, opcionalmente,
+como segundo parecer que aponta as **divergências** do detector local. Algoritmos,
+procedência de cada limiar e limitações: **[docs/SENTINELA.md](docs/SENTINELA.md)**.
+
+> ⚠️ Assistente de atenção — **não** é ADAS/DMS homologado, não freia e não faz
+> diagnóstico médico.
 
 ---
 
@@ -184,6 +216,9 @@ Duas decisões que valem a pena copiar:
 | `assets/face.js` | 120 | Reconhecimento facial |
 | `docs.mjs` | 114 | Extração de PDF, DOCX, PPTX, XLSX |
 | `sw.js` | 100 | Service worker do aplicativo instalável |
+| `assets/sentinela/*.js` | 3.388 | **Sentinela** — percepção, rastreador, analisadores (vigilância, motorista, trânsito), alertas, agente SAFER-X, HUD |
+| `sentinela.mjs` | 266 | Sentinela no servidor — runtime por lista branca, status, análise profunda |
+| `sentinela.html` · `assets/sentinela.css` | 574 | Console tático da Sentinela |
 
 ### Stack
 
@@ -196,7 +231,8 @@ Duas decisões que valem a pena copiar:
 | Transmissão | Server-Sent Events | Resposta palavra a palavra, interrompível |
 | Persistência | JSON em disco | Sem banco. Estado auditável a olho nu |
 
-**Dependências (3):** `pdf-parse` · `jszip` · `whatsapp-web.js`
+**Dependências (4):** `pdf-parse` · `jszip` · `whatsapp-web.js` · `@mediapipe/tasks-vision`
+(runtime de visão da Sentinela — Google, Apache-2.0, sem dependências transitivas, versão fixada)
 
 ---
 
@@ -441,6 +477,10 @@ Onze arquivos JSON em `data/` — `agenda` · `memory` · `faces` · `voices` ·
 | `faces.json` · `voices.json` | Biometria facial e vocal da família |
 | `memory.json` | Memória pessoal e profissional |
 | `watch.json` | Carteira de clientes sob vigilância |
+
+O servidor de estáticos **recusa** (404) qualquer caminho com segmento oculto
+(`.env`, `.git`, inclusive `%2e%2e`/`%2f` codificados e `\` do Windows) e as pastas
+`data/`, `node_modules/` e `bin/` — o túnel do acesso móvel põe o servidor na internet.
 
 ### Princípios permanentes
 

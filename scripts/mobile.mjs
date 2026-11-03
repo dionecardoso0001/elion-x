@@ -52,6 +52,8 @@ function startTunnel() {
       log(`\n  ${line}`);
       log(`   ✅  SEU LINK MOBILE ESTÁ PRONTO, SENHOR:`);
       log(`\n        ${link}\n`);
+      log(`   ◈ SENTINELA (câmera do celular, motorista e trânsito):`);
+      log(`        ${link}/sentinela.html\n`);
       log(`   ◈ Um QR Code vai abrir no navegador do PC — escaneie`);
       log(`     com a câmera do celular para entrar com voz e câmera.`);
       log(`   ◈ Mantenha ESTA janela aberta enquanto usar no celular.`);

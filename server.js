@@ -31,6 +31,7 @@ import {
 } from './formatos.mjs';
 import { analisarDocumento, sumarioTexto, fatosTexto, expandirBusca } from './compreensao.mjs';
 import { openaiStream, openaiVisao, openaiTexto, devoDesviar, motivoDoDesvio } from './fallback.mjs';
+import * as SENTINELA from './sentinela.mjs';
 import { blocoIdentidade, blocoIdentidadeCurto, lerPerfil } from './perfil.mjs';
 import { investigarAntenas, garantirNoAr, TOOL_SIGNALX, BASE as SIGNALX_URL } from './signalx.mjs';
 
@@ -253,7 +254,7 @@ FERRAMENTAS (use proativamente, sem pedir permissão):
 - revisar_desempenho: AUTOEXAME. Você lê o registro do seu próprio funcionamento: taxa de êxito, quais ferramentas falham e por quê, quais são lentas, quais nunca falharam, e tudo que ele já lhe ensinou. Use em "você está funcionando bem?", "o que você aprendeu?", "onde você erra?", "está melhorando?", ou quando VOCÊ perceber que anda falhando e quiser entender o padrão antes de prometer resultado. Relate em primeira pessoa e com honestidade, inclusive as falhas. Se a causa é algo que ele pode corrigir (crédito acabando, chave inválida, rede), DIGA o que fazer.
 - HONESTIDADE SOBRE SI MESMO: você sabe onde tropeça porque se mede. Se uma ferramenta vem falhando, AVISE antes de tentar ("isso tem falhado por falta de crédito, vou tentar assim mesmo") em vez de prometer e frustrar. Se uma é lenta, anuncie a espera — silêncio longo parece travamento. Nunca invente que algo funcionou.
 - investigar_antenas: MODO NASA — inteligência de radiofrequência sobre a base pública de licenciamento da ANATEL. Levanta as ANTENAS/ERBs 2G, 3G, 4G e 5G de TODAS as operadoras (Vivo, Claro, TIM, Algar, Brisanet e demais) numa CIDADE (cidade+uf) ou num RAIO (lat+lon+raio_km): quantos sites físicos existem, a fatia de cada operadora, quais gerações estão presentes, quais faixas de espectro estão ocupadas (700 MHz a 26 GHz) e os endereços dos sites mais densos com coordenada, número de setores e altura de antena. GATILHOS: "ative o modo NASA", "modo NASA", e também qualquer pergunta sobre antenas, ERBs, torres, cobertura, sinal de celular, 5G, presença de operadora, infraestrutura de telecom ou conectividade num lugar — MESMO sem a palavra NASA. Ao chamar, o console NASA abre sozinho na interface com o mapa e o rastreio; não precisa de open_screen. Se ele citar só o estado ("no Ceará") sem a cidade, PERGUNTE qual município antes de varrer — o Ceará tem 184, e varrer o estado inteiro não cabe num recorte útil. Uma varredura de município leva de 30 a 90 segundos: avise que está varrendo em vez de deixá-lo no escuro. AO RELATAR: comece pelo número de sites e pela operadora dominante, depois as gerações (destaque a fatia de 5G, que ainda é pequena no Brasil) e as faixas ocupadas. DIGA SEMPRE, sem enfeitar, que são dados de LICENCIAMENTO — o que a operadora declarou à ANATEL —, não medição de sinal: uma estação licenciada pode estar desligada. Se vier "amostra truncada", relate os números como PISO, nunca como total
-- open_screen / close_screen: CONTROLE DE TELAS por voz — você abre e fecha as "subtelas" da plataforma para o operador nunca precisar do mouse. open_screen ABRE a tela pelo nome (screen): "camera" (visão computacional — só LIGA o sensor; para descrever o que vê use analyze_camera), "whatsapp", "noticias", "clima", "agenda", "brain" = Painel de Controle / Segundo Cérebro, "market" = Investimentos / mapa de ações (passe o ativo em query se ele disser um), "carteira", "email", "conselho", "curso" (IA Sem Medo), "site" (query = URL). Use SEMPRE que ele disser "abre/mostra/exibe a tela|painel|janela de X", "abre a câmera", "abre o WhatsApp", "abre o segundo cérebro", "abre os investimentos", "abre meus e-mails". close_screen FECHA/FINALIZA: target = a mesma lista, "tudo" para fechar todas, ou vazio para fechar a que está aberta. Use quando ele disser "pode fechar", "fecha isso", "finaliza", "encerra", "pode parar", "desliga a câmera", "fecha o painel/o site/o mercado". Notícias, clima e agenda são quadrantes fixos (sempre visíveis — não fecham). Depois de abrir/fechar, confirme em meia frase, com naturalidade ("Pronto, Senhor.")
+- open_screen / close_screen: CONTROLE DE TELAS por voz — você abre e fecha as "subtelas" da plataforma para o operador nunca precisar do mouse. open_screen ABRE a tela pelo nome (screen): "camera" (visão computacional — só LIGA o sensor; para descrever o que vê use analyze_camera), "whatsapp", "noticias", "clima", "agenda", "brain" = Painel de Controle / Segundo Cérebro, "market" = Investimentos / mapa de ações (passe o ativo em query se ele disser um), "carteira", "email", "conselho", "curso" (IA Sem Medo), "sentinela" (console de visão computacional tática: vigilância com IA, modo motorista anti-fadiga e modo trânsito anticolisão — use quando ele pedir "abre a sentinela", "modo motorista", "monitora o trânsito", "vigia a área restrita"), "site" (query = URL). Use SEMPRE que ele disser "abre/mostra/exibe a tela|painel|janela de X", "abre a câmera", "abre o WhatsApp", "abre o segundo cérebro", "abre os investimentos", "abre meus e-mails". close_screen FECHA/FINALIZA: target = a mesma lista, "tudo" para fechar todas, ou vazio para fechar a que está aberta. Use quando ele disser "pode fechar", "fecha isso", "finaliza", "encerra", "pode parar", "desliga a câmera", "fecha o painel/o site/o mercado". Notícias, clima e agenda são quadrantes fixos (sempre visíveis — não fecham). Depois de abrir/fechar, confirme em meia frase, com naturalidade ("Pronto, Senhor.")
 - SUA FORMA (esfera ⇄ rosto humano): open_screen screen="rosto" faz a esfera neural virar o SEU rosto humano em 3D; screen="esfera" (ou close_screen "rosto") volta. Isto é o SEU corpo na interface, não a câmera dele. Se ele PERGUNTAR se você consegue ("consegue virar humano?", "dá pra mostrar seu rosto?"), a pergunta É o pedido: execute e confirme em uma frase, sem responder apenas "sim, consigo".
 
 VISÃO AO VIVO — REGRA CRÍTICA: a câmera é um FLUXO EM TEMPO REAL. Toda vez que o operador perguntar o que você vê, está vendo, ou pedir para olhar de novo, CHAME analyze_camera NOVAMENTE para capturar um frame NOVO. NUNCA repita uma descrição anterior nem responda de memória — o fundo, o ângulo da câmera, os gestos e as pessoas podem ter mudado a cada instante. Cada análise é um momento diferente; descreva o que MUDOU em relação ao que você viu antes, se notar.
@@ -599,7 +600,7 @@ const TOOLS = [
     input_schema: {
       type: 'object',
       properties: {
-        screen: { type: 'string', description: 'Qual tela abrir: "camera" (visão computacional), "whatsapp", "noticias", "clima", "agenda", "brain" (Painel de Controle / Segundo Cérebro), "market" (Investimentos / mapa de ações), "carteira", "email", "conselho", "curso" (IA Sem Medo), "loteria" (MINI TV do sorteio — mostra as combinações em bolas, como um sorteio de verdade), "monitor" (tela de vídeo), "cyber", "site". Pode ser texto livre — o sistema reconhece sinônimos.' },
+        screen: { type: 'string', description: 'Qual tela abrir: "camera" (visão computacional), "whatsapp", "noticias", "clima", "agenda", "brain" (Painel de Controle / Segundo Cérebro), "market" (Investimentos / mapa de ações), "carteira", "email", "conselho", "curso" (IA Sem Medo), "loteria" (MINI TV do sorteio — mostra as combinações em bolas, como um sorteio de verdade), "monitor" (tela de vídeo), "cyber", "sentinela" (console de VISÃO COMPUTACIONAL TÁTICA: vigilância com IA — objetos, área restrita, objeto abandonado, quedas; modo MOTORISTA — fadiga, microssono, mal-estar, com sirene e voz mandando estacionar; modo TRÂNSITO — colisão, pedestre, obstáculo, distância), "site". Pode ser texto livre — o sistema reconhece sinônimos.' },
         query: { type: 'string', description: 'Contexto opcional: para "market" o ativo (ex.: PETR4, BTCUSD, IBOV); para "clima" a cidade; para "site" a URL ou domínio.' },
       },
       required: ['screen'],
@@ -3091,6 +3092,10 @@ function canonScreen(s) {
   if (/(seu |sua |teu |tua |forma |vers[ãa]o |modo |virar? |assumir? |mostrar? )?(rosto|face|humaniza|human[oa]|human[íi]stic|pessoa de verdade|cara humana|ciborgue|avatar)/.test(t)
       && !/reconhec|cadastr|identific|quem [ée]|analisar? (a )?(cena|c[âa]mera)/.test(t)) return 'rosto';
   if (/esfera|n[úu]cleo|bola|orbe|forma original|forma neural|volta[r]? (a|ao|pra|para)? ?(ser )?(esfera|n[úu]cleo)/.test(t)) return 'esfera';
+  /* SENTINELA vem ANTES de 'camera': "visão" também é vocabulário dela, mas
+     "modo motorista", "vigilância", "área restrita" pedem o console tático,
+     não o monitor óptico simples. */
+  if (/sentinela|safer.?x|modo motorista|motorista|tr[âa]nsito|anticolis|fadiga|sonol[êe]ncia|cftv|vigil[âa]ncia (por|da|de) c[âa]mera|[áa]rea restrita|objeto abandonado|vis[ãa]o t[áa]tica/.test(t)) return 'sentinela';
   if (/c[âa]m[ae]ra|vis[ãa]o|olho|sensor [óo]ptico|webcam/.test(t)) return 'camera';
   if (/whats|zap/.test(t)) return 'whatsapp';
   if (/not[íi]cia|news|manchete|jornal|\bintel\b/.test(t)) return 'noticias';
@@ -3506,6 +3511,7 @@ async function execToolNucleo(tu, send) {
           carteira: 'Abrindo a carteira', email: 'Abrindo os e-mails', conselho: 'Abrindo o Conselho de Decisão',
           curso: 'Abrindo o curso IA SEM MEDO', site: 'Abrindo site no visor',
           rosto: 'Assumindo a forma humana', esfera: 'Voltando ao núcleo neural',
+          sentinela: 'Abrindo SENTINELA · visão computacional tática',
         };
         send({ tool: { name: 'open_screen', label: LABEL[screen] || `Abrindo tela: ${screen || '?'}` } });
         switch (screen) {
@@ -3566,6 +3572,9 @@ async function execToolNucleo(tu, send) {
           case 'conselho':
             send({ ui: { type: 'open_screen', screen: 'council' } });
             return result('Abri o seletor do Conselho de Decisão na interface. Se o operador já tiver a decisão em mente, você mesmo pode convocar direto com council_review na melhor configuração.');
+          case 'sentinela':
+            send({ ui: { type: 'open_screen', screen: 'sentinela' } });
+            return result('Console SENTINELA aberto em janela própria (visão computacional tática, processada no aparelho). Missões: SENTINELA (objetos, área restrita, objeto abandonado, quedas, anomalias), MOTORISTA (fadiga, microssono, mal-estar — com sirene e ordem de voz para estacionar) e TRÂNSITO (risco de colisão, pedestre, obstáculo, distância). Confirme em uma frase e diga que ele escolhe a missão na tela e clica em INICIAR OPERAÇÃO.');
           case 'cyber': {
             const rep = await securityScan({ events: SEC_EVENTS, port: PORT, focus: 'geral' });
             send({ ui: { type: 'cyber', payload: rep } });
@@ -3598,7 +3607,7 @@ async function execToolNucleo(tu, send) {
           camera: 'a câmera', whatsapp: 'o WhatsApp', brain: 'o Segundo Cérebro', market: 'os Investimentos',
           carteira: 'a carteira', email: 'os e-mails', site: 'o site', conselho: 'o Conselho', curso: 'o curso',
           visor: 'o visor', all: 'todas as telas', noticias: 'as notícias', clima: 'o clima', agenda: 'a agenda',
-          monitor: 'o monitor de vídeo',
+          monitor: 'o monitor de vídeo', sentinela: 'o console Sentinela',
         };
         const nome = NOME[target] || 'a tela aberta';
         send({ tool: { name: 'close_screen', label: `Fechando ${nome}` } });
@@ -4379,7 +4388,13 @@ const MIME = {
   '.woff2': 'font/woff2', '.webm': 'video/webm', '.mp4': 'video/mp4',
   // sem este tipo o celular ignora o manifesto e não oferece a instalação
   '.webmanifest': 'application/manifest+json',
+  // SENTINELA: módulo ES precisa de tipo JavaScript (o navegador RECUSA executar
+  // módulo servido como octet-stream) e WASM com o próprio tipo compila em streaming
+  '.mjs': 'application/javascript; charset=utf-8', '.wasm': 'application/wasm',
+  '.tflite': 'application/octet-stream', '.task': 'application/octet-stream',
 };
+// análise profunda da SENTINELA: no máximo 8 por minuto, venha de onde vier o pedido
+const limiteSentinela = SENTINELA.criarLimitador({ porMinuto: 8 });
 
 const readBody = req => new Promise((resolve, reject) => {
   const chunks = [];
@@ -4443,6 +4458,37 @@ const server = http.createServer(async (req, res) => {
       if (!image) return json(res, 400, { error: 'imagem ausente' });
       const data = await analyzeVision(image, mediaType, prompt, known);
       return json(res, 200, { ...data, text: data.narration }); // text = compat
+    }
+
+    // ── SENTINELA: runtime de visão pela própria origem (lista branca de arquivos) ──
+    if (req.method === 'GET' && SENTINELA.servirMediapipe(url, res, __dirname)) return;
+
+    // ── SENTINELA: o que existe localmente (runtime, modelos, agente) ──
+    if (req.method === 'GET' && url.pathname === '/api/sentinela/status') {
+      return json(res, 200, SENTINELA.statusSentinela({ raiz: __dirname, temClaude: !!API_KEY, temContingencia: !!OPENAI_KEY }));
+    }
+
+    // ── SENTINELA: análise profunda de UM quadro (nunca no caminho do alarme) ──
+    if (req.method === 'POST' && url.pathname === '/api/sentinela/analisar') {
+      if (!API_KEY && !OPENAI_KEY) return json(res, 503, { error: 'Nenhuma chave de IA configurada no .env (ANTHROPIC_API_KEY).' });
+      if (!limiteSentinela.permitir()) return json(res, 429, { error: 'Limite de análises por minuto atingido — aguarde alguns segundos.' });
+      let pedido;
+      try { pedido = SENTINELA.validarPedido(JSON.parse(await readBody(req) || '{}')); }
+      catch (e) { return json(res, 400, { error: e.message }); }
+      try {
+        return json(res, 200, await SENTINELA.analisarCena({ apiKey: API_KEY, ...pedido }));
+      } catch (e) {
+        // mesma regra dos outros pontos que chamam a Anthropic: só erro de PROVEDOR desvia
+        if (!OPENAI_KEY || (API_KEY && !devoDesviar(e))) throw e;
+        console.warn('[desvio] sentinela pela OpenAI —', e.message.slice(0, 80));
+        const bruto = await openaiVisao({
+          chave: OPENAI_KEY, modelo: OPENAI_FALLBACK_MODEL, system: SENTINELA.SISTEMA_CONTINGENCIA,
+          texto: SENTINELA.textoPedido(pedido), imagemB64: pedido.imagem, mediaType: pedido.mediaType,
+          maxTokens: 2000, signal: AbortSignal.timeout(60000),
+        });
+        return json(res, 200, { ...SENTINELA.interpretarBruto(bruto), modelo: OPENAI_FALLBACK_MODEL,
+          provedor: `openai (contingência: ${API_KEY ? motivoDoDesvio(e) : 'sem chave Anthropic'})` });
+      }
     }
 
     // ── clima (q=cidade | lat&lon=coords | nada=GPS salvo do operador → Santos) ──
@@ -5322,7 +5368,18 @@ IMPORTANTE: responda com JSON CRU, sem cercas de código markdown (nada de crase
     }
 
     // ── estáticos ──
-    let filePath = path.join(__dirname, url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\//, ''));
+    /* Nunca servir o que não é interface: arquivo ou pasta OCULTA (.env com as
+       chaves, .git com o histórico, .wwebjs_auth), os DADOS do operador
+       (data/ — token do Gmail, sessão do WhatsApp, biometria), dependências e
+       binários. Antes desta regra, GET /.env devolvia as chaves — e o túnel
+       HTTPS do acesso mobile põe este servidor na internet. O teste olha cada
+       segmento DEPOIS de decodificar (%2e%2e e %2f viram ".." e "/") e separa
+       também por "\", que o Windows trata como separador. */
+    const relPedido = decodeURIComponent(url.pathname).replace(/^[\\/]+/, '');
+    if (relPedido.split(/[\\/]/).some(s => s.startsWith('.')) || /^(data|node_modules|bin)([\\/]|$)/i.test(relPedido)) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Not Found');
+    }
+    let filePath = path.join(__dirname, url.pathname === '/' ? 'index.html' : relPedido);
     if (!filePath.startsWith(__dirname)) { res.writeHead(403); return res.end('Forbidden'); }
     if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) filePath = path.join(__dirname, 'index.html');
     fs.readFile(filePath, (err, data) => {
@@ -5358,7 +5415,10 @@ server.listen(PORT, () => {
   console.log(`  ElevenLabs:        ${ELEVEN_KEY ? '✓ ativa' : '○ opcional'}`);
   console.log(`  Gmail:             ${GOOGLE_ID && GOOGLE_SECRET ? (gmailConnected() ? '✓ conectado' : '○ configurado — falta autorizar (/oauth/google/start)') : '○ opcional — sem GOOGLE_CLIENT_ID'}`);
   const nAlvos = watchRead().alvos.length;
-  console.log(`  Vigilância:        ${nAlvos ? `✓ ${nAlvos} tema(s) · varredura a cada 3h` : '○ nenhum tema — use watch_add'}\n`);
+  console.log(`  Vigilância:        ${nAlvos ? `✓ ${nAlvos} tema(s) · varredura a cada 3h` : '○ nenhum tema — use watch_add'}`);
+  const st = SENTINELA.statusSentinela({ raiz: __dirname, temClaude: !!API_KEY, temContingencia: !!OPENAI_KEY });
+  const nMod = Object.values(st.modelos).filter(Boolean).length;
+  console.log(`  Sentinela:         http://localhost:${PORT}/sentinela.html · runtime ${st.mediapipe.local ? `✓ local v${st.mediapipe.versao}` : '○ via CDN (rode npm install)'} · modelos ${nMod ? `✓ ${nMod}/3 offline` : '○ baixados na 1ª abertura'}\n`);
 
   /* Varredura periódica das fontes primárias. A primeira roda 2 min após o
      boot (deixa o servidor estabilizar) e depois a cada 3 horas. Só guarda

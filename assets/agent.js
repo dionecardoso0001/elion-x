@@ -384,6 +384,7 @@
   $('qaAgenda').onclick = () => send('Liste meus próximos compromissos da agenda.');
   $('qaBrain').onclick = () => ELX.brain.open(); // janela rastreada → o ELION consegue fechá-la por voz
   $('qaCyber').onclick = () => ELX.cyber.open(); // console de defesa cibernética (simulação + telemetria real)
+  $('qaSentinela').onclick = () => ELX.sentinela.open(); // visão computacional tática (janela própria, câmera própria)
   /* MODO NASA: abre o console de espectro e já avisa o agente que ele está no
      ar, para o operador poder pedir a varredura falando, sem clicar em mais nada. */
   $('qaNasa').onclick = () => {

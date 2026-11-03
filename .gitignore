@@ -24,6 +24,8 @@ dist/
 #   *.glb (~30 MB)           = modelos 3D do avatar
 bin/
 assets/avatar/*.glb
+#   modelos de visão da SENTINELA (~16 MB) = npm run sentinela:modelos
+assets/vendor/modelos/
 
 # Material de trabalho e de clientes — NÃO é código da plataforma
 docs/*.docx
