@@ -14,6 +14,7 @@ construída, vá para [COMO-FOI-CONSTRUIDO.md](COMO-FOI-CONSTRUIDO.md).
 - [Os quadrantes](#os-quadrantes)
 - [Modo DOC — documentos](#modo-doc--documentos)
 - [Terminal Cyber](#terminal-cyber)
+- [Sentinela — visão tática](#sentinela--visão-tática)
 - [No celular](#no-celular)
 - [Quando algo falha](#quando-algo-falha)
 
@@ -245,11 +246,38 @@ Tudo marcado com **[REAL]** vem da sua máquina. O resto é cenário tático.
 
 ---
 
+## Sentinela — visão tática
+
+Botão **⌖ SENTINELA**, ou *"Elion, abre a sentinela"* / *"ativa o modo motorista"*.
+Escolha a missão e clique **INICIAR OPERAÇÃO** — esse clique é o que destrava sirene
+e voz no navegador.
+
+| Missão | Onde fica a câmera | Antes de começar |
+|---|---|---|
+| **SENTINELA** | webcam ou celular fixo olhando a área | **✎ DESENHAR ZONA**: toque nos cantos da área, **FECHAR ZONA** (restrita = intrusão; monitorada = permanência) |
+| **MOTORISTA** | celular no suporte, câmera **frontal** no rosto | com o carro **parado**, olhe para a via por 5 s (calibração). **◑ DISCRETO** escurece a tela |
+| **TRÂNSITO** | celular no para-brisa, câmera **traseira** na via | alinhe o trapézio do **CORREDOR** à sua faixa |
+
+- **SILENCIAR 30 s** (ou tecla `S`) cala sirene e voz; no modo motorista aparece
+  **ESTOU BEM**. O botão **✚ LIGAR SAMU 192** fica sempre visível no modo motorista.
+- **PRESET DEMONSTRAÇÃO** encurta os tempos (abandono em 8 s) para testar em casa —
+  fica rotulado na telemetria para ninguém confundir com operação.
+- **◈ ANÁLISE PROFUNDA** manda **um** quadro ao Claude e devolve avaliação de risco e
+  as divergências com o detector local. Desligada por padrão no modo automático.
+- **● GRAVAR**, **⌖ CAPTURA** e **⇩ EXPORTAR LOG** salvam só neste aparelho.
+- Lento? `?cpu=1` no endereço força a CPU (alguns drivers de GPU de celular erram).
+
+Detalhes técnicos e limites: [SENTINELA.md](SENTINELA.md).
+
+---
+
 ## No celular
 
 `ELION-X Mobile.bat` publica o endereço. Ao abrir no celular, use **"Adicionar à tela
 de início"** — a plataforma é instalável e passa a abrir como aplicativo, em tela
-cheia, sem barra de navegador.
+cheia, sem barra de navegador. A Sentinela tem endereço próprio
+(`https://<túnel>/sentinela.html`) e pode ser instalada como um aplicativo separado,
+que abre direto no console.
 
 O microfone funciona igual. Toque longo no botão do microfone abre a calibração.
 
