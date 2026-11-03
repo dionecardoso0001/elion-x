@@ -334,9 +334,18 @@ de estáticos do ELION-X **entregava qualquer arquivo da raiz do projeto**:
 `GET /.git/config` e `GET /.env.example` respondiam 200 — e, numa instalação real,
 `GET /.env` devolveria as chaves da Anthropic/OpenAI e `GET /data/...` o token OAuth do
 Gmail, a sessão do WhatsApp e a biometria. Com o túnel HTTPS do acesso móvel, isso fica
-exposto à internet. O handler agora responde 404 para qualquer segmento oculto (`.`),
-inclusive `%2e%2e` e `%2f` codificados e `\` do Windows, e para `data/`,
-`node_modules/` e `bin/`. Nenhuma página legítima dependia desses caminhos (verificado).
+exposto à internet.
+
+A primeira correção (lista de **bloqueio**: segmento oculto, `data/`, `node_modules/`,
+`bin/`) fechou o Linux, mas a revisão de segurança formal mostrou que no **Windows** — o
+ambiente real do ELION-X — o NTFS abre o mesmo arquivo por apelidos que um filtro de
+texto não reconhece: nome curto 8.3 (`/ENV~1` → `.env`, `/GIT~1/config`) e fluxo de
+diretório (`/data::$INDEX_ALLOCATION/google-token.json`). A correção definitiva
+(`estaticos.mjs`) é uma **lista de permissão**: só saem os oito arquivos da raiz que a
+interface usa (levantados de todos os HTML/JS do cliente) e a árvore `assets/`; caminho
+com `:`, `~` ou byte nulo é recusado; e o caminho **real** resolvido no disco
+(`realpath`) é conferido de novo, o que pega link simbólico e qualquer apelido restante.
+Testado em `tests/estaticos.test.js`, inclusive com as grafias NTFS.
 
 **Recomendação:** se o ELION-X já rodou com túnel antes desta correção, **rotacione as
 chaves de API** do `.env` e revogue o token do Gmail — não há como saber se foram lidas.

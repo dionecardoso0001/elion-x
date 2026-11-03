@@ -32,6 +32,7 @@ import {
 import { analisarDocumento, sumarioTexto, fatosTexto, expandirBusca } from './compreensao.mjs';
 import { openaiStream, openaiVisao, openaiTexto, devoDesviar, motivoDoDesvio } from './fallback.mjs';
 import * as SENTINELA from './sentinela.mjs';
+import { classificarCaminho, caminhoProibido } from './estaticos.mjs';
 import { blocoIdentidade, blocoIdentidadeCurto, lerPerfil } from './perfil.mjs';
 import { investigarAntenas, garantirNoAr, TOOL_SIGNALX, BASE as SIGNALX_URL } from './signalx.mjs';
 
@@ -4395,6 +4396,8 @@ const MIME = {
 };
 // análise profunda da SENTINELA: no máximo 8 por minuto, venha de onde vier o pedido
 const limiteSentinela = SENTINELA.criarLimitador({ porMinuto: 8 });
+// raiz REAL do projeto (sem links simbólicos) — base da conferência de caminho dos estáticos
+const RAIZ_REAL = fs.realpathSync.native(__dirname);
 
 const readBody = req => new Promise((resolve, reject) => {
   const chunks = [];
@@ -5368,20 +5371,21 @@ IMPORTANTE: responda com JSON CRU, sem cercas de código markdown (nada de crase
     }
 
     // ── estáticos ──
-    /* Nunca servir o que não é interface: arquivo ou pasta OCULTA (.env com as
-       chaves, .git com o histórico, .wwebjs_auth), os DADOS do operador
-       (data/ — token do Gmail, sessão do WhatsApp, biometria), dependências e
-       binários. Antes desta regra, GET /.env devolvia as chaves — e o túnel
-       HTTPS do acesso mobile põe este servidor na internet. O teste olha cada
-       segmento DEPOIS de decodificar (%2e%2e e %2f viram ".." e "/") e separa
-       também por "\", que o Windows trata como separador. */
+    /* LISTA DE PERMISSÃO (estaticos.mjs): só sai o que a interface usa. Antes,
+       qualquer arquivo da raiz era entregue — GET /.env devolvia as chaves e
+       GET /data/... a sessão do WhatsApp —, e o túnel HTTPS do acesso mobile põe
+       este servidor na internet. Uma lista de BLOQUEIO não bastou: no Windows o
+       NTFS abre .env como ENV~1 e data/ como data::$INDEX_ALLOCATION. */
     const relPedido = decodeURIComponent(url.pathname).replace(/^[\\/]+/, '');
-    if (relPedido.split(/[\\/]/).some(s => s.startsWith('.')) || /^(data|node_modules|bin)([\\/]|$)/i.test(relPedido)) {
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Not Found');
-    }
-    let filePath = path.join(__dirname, url.pathname === '/' ? 'index.html' : relPedido);
+    const classe = classificarCaminho(relPedido);
+    const naoEncontrado = () => { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Not Found'); };
+    if (classe === 'negado') return naoEncontrado();
+    let filePath = path.join(__dirname, classe === 'publico' && relPedido ? relPedido : 'index.html');
     if (!filePath.startsWith(__dirname)) { res.writeHead(403); return res.end('Forbidden'); }
     if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) filePath = path.join(__dirname, 'index.html');
+    // segunda barreira: o caminho REAL no disco (link simbólico, apelido do sistema de arquivos)
+    const relReal = path.relative(RAIZ_REAL, fs.realpathSync.native(filePath));
+    if (relReal.startsWith('..') || path.isAbsolute(relReal) || caminhoProibido(relReal)) return naoEncontrado();
     fs.readFile(filePath, (err, data) => {
       if (err) { res.writeHead(404); return res.end('Not Found'); }
       const ext = path.extname(filePath).toLowerCase();

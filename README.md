@@ -478,9 +478,12 @@ Onze arquivos JSON em `data/` — `agenda` · `memory` · `faces` · `voices` ·
 | `memory.json` | Memória pessoal e profissional |
 | `watch.json` | Carteira de clientes sob vigilância |
 
-O servidor de estáticos **recusa** (404) qualquer caminho com segmento oculto
-(`.env`, `.git`, inclusive `%2e%2e`/`%2f` codificados e `\` do Windows) e as pastas
-`data/`, `node_modules/` e `bin/` — o túnel do acesso móvel põe o servidor na internet.
+O servidor de estáticos trabalha por **lista de permissão** (`estaticos.mjs`): só
+entrega as páginas da interface, os manifestos, o `sw.js` e a árvore `assets/`.
+Segmento oculto (`.env`, `.git`), `data/`, `node_modules/`, `bin/` e qualquer caminho
+com `:` ou `~` (no Windows, o NTFS abre `.env` como `ENV~1` e `data/` como
+`data::$INDEX_ALLOCATION`) recebem 404, e o caminho real no disco é conferido de novo
+— o túnel do acesso móvel põe o servidor na internet.
 
 ### Princípios permanentes
 
