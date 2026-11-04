@@ -186,6 +186,7 @@ export function montarAlerta({ motivo, resposta = null, semResposta = false, mot
   const mapa = local && isFinite(local.lat) && isFinite(local.lng) ? `https://maps.google.com/?q=${local.lat.toFixed(6)},${local.lng.toFixed(6)}` : null;
   const situacao = atualizacao || (semResposta
     ? `${m.titulo} e o motorista NÃO RESPONDEU à checagem por voz`
+    : motivo === 'manual' ? 'o motorista pediu ajuda pelo botão do aplicativo'
     : `${m.titulo}; motorista: ${resposta || 'pediu ajuda'}`);
   return {
     tipo: atualizacao ? 'atualizacao' : 'alerta_saude',

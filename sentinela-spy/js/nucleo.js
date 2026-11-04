@@ -13,14 +13,17 @@
 import { LIMIARES, MODELOS, MODELOS_POR_MODO, VERSAO, rotulo, limiaresEfetivos, NOMES_PERFIL } from './config.js';
 import { GravadorCampo, ROTULOS_ANOTACAO } from './gravador.js';
 import { Rastreador } from './rastreador.js';
-import { AnalisadorMotorista, celularJuntoAoRosto } from './motorista.js';
+import { AnalisadorMotorista, celularJuntoAoRosto, esqueletoDoCondutor } from './motorista.js';
+import { ChecagemSaude, MOTIVOS, montarAlerta, interpretarResposta } from './saude.js';
+import { enviarAlerta, resumoEnvio, criarFila, releLiberado } from './spy/alerta.js';
+import { ouvir, escutaDisponivel, liberarMicrofone } from './escuta.js';
 import { AnalisadorTransito, tipoDe } from './transito.js';
 import { FaunaPista, ladrilhosCorredor, recorteDistante, fundirDeteccoes } from './fauna.js';
 import { AnalisadorVigilancia } from './vigilancia.js';
 import { GestorAlertas } from './alertas.js';
 import { narrar, relatorioSituacao, montarTelemetria } from './agente.js';
 import { pedidoInterpretacao, pedidoRelatorio, pedidoDiagnostico, lerResposta, extrairJSON, normalizarInterpretacao, normalizarRelatorio,
-  conversar, criarPolitica, custoEstimado, MODELO, ROTULO_RECURSO } from './spy/cerebro.js';
+  conversar, criarPolitica, custoEstimado, MODELO, ROTULO_RECURSO, pedidoChecagem, turnoChecagem } from './spy/cerebro.js';
 import { ClienteAgente, detectarServidor } from './spy/cliente.js';
 import { RegistroIncidentes } from './spy/incidentes.js';
 import { Percepcao, abrirCamera, listarCameras, preVoo } from './percepcao.js';
@@ -49,6 +52,8 @@ const cfg = Object.assign({
 }, lerCfg());
 // preferências do agente (a CHAVE da API nunca entra aqui — fica em armazenamento separado, ver configurarAgente)
 cfg.agente = { modo: null, imagens: true, relatorioMin: 0, lembrar: false, token: '', ...(cfg.agente || {}) };
+// alerta ao responsável: os DESTINATÁRIOS ficam no relé; aqui só quem dirige, o relé e o token deste aparelho
+cfg.alerta = { motorista: '', veiculo: '', url: '', token: '', telefone: '', semResposta: true, local: true, ...(cfg.alerta || {}) };
 const salvarCfg = () => { try { localStorage.setItem(CHAVE_CFG, JSON.stringify(cfg)); } catch { /* modo privado */ } };
 
 /* ── estado da operação ── */
@@ -68,6 +73,9 @@ const E = {
   cvLuz: null, cvRealce: null, realcadoEm: -1,
   // fauna na pista: segundo estágio (classificador) e segunda passada do detector no trecho distante
   fauna: new FaunaPista(), cvRecorte: null, chamadasDet: 0,
+  // checagem de saúde do motorista
+  checagem: new ChecagemSaude({ escalarSemResposta: cfg.alerta.semResposta }), saude: null, filaSaude: Promise.resolve(),
+  saudeGeracao: 0, escuta: null, servidorRele: false, filaAlertas: null,
   tVideo: -1, fps: 0, quadrosEm: [], infMs: 0, errosSeguidos: 0,
   gps: { velocidade: null, precisao: null, em: null, watch: null, erro: null },
   zonaEdicao: null, gravador: null, composicao: null, evidencias: 0, analisando: false,
@@ -132,8 +140,13 @@ async function boot() {
     : 'registro de incidentes só em memória (armazenamento do navegador bloqueado)');
   // build estático (GitHub Pages) não tem servidor de agente: nem sonda
   E.servidorAgente = E.status?.hospedagem === 'estatica' ? { disponivel: false } : await detectarServidor();
+  E.servidorRele = !!E.servidorAgente.rele;   // relé do próprio servidor (/api/spy/alerta)
   configurarAgente();
   logBoot(E.agente.pronto ? 'ok' : 'aviso', textoEstadoAgente());
+  estadoRele();
+  logBoot(releConfigurado() ? 'ok' : 'aviso', releConfigurado()
+    ? 'alerta ao responsável · relé configurado (WhatsApp/e-mail)'
+    : 'alerta ao responsável · relé NÃO configurado — a checagem de saúde funciona, o aviso automático não (⚙ RESPONSÁVEL E RELÉ)');
 
   E.percepcao = new Percepcao({ status: E.status, aoLog: (n, m) => logBoot(n, m) });
   try {
@@ -289,7 +302,7 @@ async function trocarCamera() {
 function iniciarGPS() {
   if (E.gps.watch != null || !navigator.geolocation) return;
   E.gps.watch = navigator.geolocation.watchPosition(
-    p => { E.gps.velocidade = p.coords.speed; E.gps.precisao = p.coords.accuracy; E.gps.em = agora(); E.gps.erro = null; },
+    p => { E.gps.velocidade = p.coords.speed; E.gps.precisao = p.coords.accuracy; E.gps.lat = p.coords.latitude; E.gps.lng = p.coords.longitude; E.gps.em = agora(); E.gps.erro = null; },
     err => { E.gps.erro = err.code === 1 ? 'negado' : 'sem sinal'; },
     { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 });
 }
@@ -495,8 +508,12 @@ function processar(v, t) {
       E.ultimo.objetos = t;
       celular = celularJuntoAoRosto(P.objetos(fonte, t) || [], E.rosto?.pontos);
     }
+    // esqueleto (~8 Hz): mãos nos olhos e no peito — gatilhos da checagem de saúde
+    if (P.tarefas.pose && t - E.ultimo.pose >= Math.max(120, 1.5 * E.infMs)) { E.ultimo.pose = t; E.poses = P.poses(fonte, t) || []; }
     E.trilhas = [];
-    saida = E.motorista.processar({ t, rosto: E.rosto, aspecto, celular, velocidade: cfg.gpsMov ? velocidadeGPS() : null, escuro: E.luz.escuro });
+    saida = E.motorista.processar({ t, rosto: E.rosto, aspecto, celular, velocidade: cfg.gpsMov ? velocidadeGPS() : null, escuro: E.luz.escuro,
+      esqueleto: esqueletoDoCondutor(E.poses, E.rosto?.pontos, aspecto) });
+    if (saida.metricas.checagem && !E.checagem.ativa) iniciarChecagem(saida.metricas.checagem, saida);
   } else {
     if (t - E.ultimo.objetos >= 45) {
       E.ultimo.objetos = t;
@@ -564,11 +581,236 @@ function tratarAlertas(saida, t) {
   }
   for (const c of encerradas) logAgente({ nivel: 'info', texto: `✓ NORMALIZADO: ${c.titulo}` });
 
+  // durante a checagem de saúde, sirene e voz geral calam: o microfone precisa ouvir o motorista
+  if (E.checagem.ativa) { E.sirene.desligar(); return; }
   if (E.alertas.sireneLigada(t)) E.sirene.ligar(); else E.sirene.desligar();
   if (!E.sirene.falando) {
     const f = E.alertas.proximaFala(t);
     if (f) E.sirene.falar(f.texto, { urgente: f.nivel === 'critico' });
   }
+}
+
+/* ═════════════════ CHECAGEM DE SAÚDE ═════════════════
+   Máquina de estados em saude.js (pura, testada); aqui só a execução das
+   ações: falar, ouvir, avisar o responsável pelo relé, conversar com o agente.
+   Uma ação por vez (fila de promessas); um botão interrompe a fala/escuta. */
+
+const releUrl = () => cfg.alerta.url || E.status?.rele?.url || (E.servidorRele ? 'api/spy/alerta' : '');
+const releConfigurado = () => !!(releUrl() && cfg.alerta.token);
+const origensRele = () => (E.status?.rele?.origem ? [E.status.rele.origem] : []);
+
+function estadoRele() {
+  const sel = $('seloRele');
+  if (!sel) return;
+  if (!releConfigurado()) { sel.textContent = 'SEM RELÉ'; sel.className = 'selo aviso'; return; }
+  if (!releLiberado(releUrl(), origensRele())) { sel.textContent = 'RELÉ BLOQUEADO (CSP)'; sel.className = 'selo critico'; return; }
+  sel.textContent = 'RELÉ OK'; sel.className = 'selo';
+}
+
+/** Localização para o alerta: a do GPS em uso (se recente) ou uma leitura rápida (≤ 5 s). */
+async function localAtual() {
+  if (!cfg.alerta.local) return null;
+  if (E.gps.lat != null && E.gps.em != null && agora() - E.gps.em < 60000) return { lat: E.gps.lat, lng: E.gps.lng, precisao: E.gps.precisao };
+  if (!navigator.geolocation) return null;
+  return new Promise(ok => navigator.geolocation.getCurrentPosition(
+    p => ok({ lat: p.coords.latitude, lng: p.coords.longitude, precisao: p.coords.accuracy }),
+    () => ok(null), { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 }));
+}
+
+function filaAlertas() {
+  if (E.filaAlertas) return E.filaAlertas;
+  E.filaAlertas = criarFila({
+    enviar: item => enviarAlerta({ url: item.url, token: item.token, alerta: item.alerta }),
+    aoResultado: (item, r) => {
+      const txt = resumoEnvio(r);
+      if (item.teste) { logAgente({ nivel: r?.ok ? 'sistema' : 'aviso', texto: `◈ TESTE DO ALERTA: ${r?.ok ? 'entregue' : 'falhou'} — ${txt}` }); $('infoSaude').textContent = `Teste: ${txt}`; return; }
+      if (item.alerta.tipo === 'alerta_saude' && E.saude) E.saude.envio = r;
+      logAgente({ nivel: r?.ok ? 'critico' : 'aviso', texto: `${r?.ok ? '✚ RESPONSÁVEL AVISADO' : '✖ FALHA AO AVISAR O RESPONSÁVEL'} (${item.alerta.tipo === 'atualizacao' ? 'atualização' : 'alerta'}) — ${txt}` });
+      if (E.saude?.aberta) $('saudeEnvio').textContent = r?.ok ? `Responsável avisado: ${txt}` : `NÃO foi possível avisar: ${txt}. Ligue 192 ou para o responsável.`;
+    },
+  });
+  return E.filaAlertas;
+}
+
+/** Monta e enfileira um alerta (saúde, atualização ou teste). */
+async function despacharAlerta(dados, { teste = false } = {}) {
+  if (!releConfigurado()) {
+    const msg = 'Relé não configurado: o responsável NÃO foi avisado automaticamente. Use LIGAR 192 ou LIGAR PARA O RESPONSÁVEL.';
+    logAgente({ nivel: 'aviso', texto: msg });
+    if (E.saude?.aberta) $('saudeEnvio').textContent = msg;
+    return;
+  }
+  if (!releLiberado(releUrl(), origensRele())) {
+    const msg = `O endereço do relé (${new URL(releUrl(), location.href).origin}) não está liberado nesta publicação (CSP). Defina a variável SPY_RELE_URL no GitHub e publique de novo — ver ALERTAS.md.`;
+    logAgente({ nivel: 'aviso', texto: msg });
+    if (E.saude?.aberta) $('saudeEnvio').textContent = msg;
+    if (teste) $('infoSaude').textContent = msg;
+    return;
+  }
+  const v = velocidadeGPS();
+  const alerta = montarAlerta({ ...dados, motorista: cfg.alerta.motorista, veiculo: cfg.alerta.veiculo,
+    local: await localAtual(), velocidadeKmh: v != null ? v * 3.6 : null });
+  if (teste) Object.assign(alerta, { tipo: 'teste', gravidade: 'info', situacao: 'teste do alerta de saúde — nenhuma ação necessária' });
+  if (E.saude?.aberta && !teste) $('saudeEnvio').textContent = navigator.onLine === false ? 'Sem internet: o aviso sai assim que a conexão voltar…' : 'Avisando o responsável…';
+  filaAlertas().adicionar({ url: new URL(releUrl(), location.href).href, token: cfg.alerta.token, alerta, teste });
+}
+
+function abrirSaude(motivo) {
+  const d = $('dlgSaude');
+  E.saude = { motivo, aberta: true, envio: null, ia: { historico: [], turnos: 0, sintomas: new Set() }, inicio: agora() };
+  $('saudeMotivo').textContent = `Sinal observado: ${MOTIVOS[motivo]?.titulo || motivo}`;
+  $('saudeFala').textContent = ''; $('saudeOuvido').textContent = ''; $('saudeEnvio').textContent = ''; $('saudeSintomas').replaceChildren();
+  const tel = String(cfg.alerta.telefone || '').replace(/[^\d+]/g, '');
+  const lnk = $('lnkResponsavel');
+  lnk.hidden = tel.length < 8; if (!lnk.hidden) lnk.href = `tel:${tel}`;
+  if (!d.open) { try { d.showModal(); } catch { d.setAttribute('open', ''); } }
+  E.sirene.desligar();
+}
+
+function fecharSaude() {
+  const d = $('dlgSaude');
+  if (d.open) d.close();
+  if (E.saude) E.saude.aberta = false;
+  $('saudeOuvindo').hidden = true;
+}
+
+/** Ouve com possibilidade de interrupção por botão. */
+async function ouvirMotorista(ms) {
+  if (!escutaDisponivel()) { $('saudeOuvido').textContent = 'Este navegador não reconhece fala — use os botões.'; await new Promise(r => setTimeout(r, ms)); return null; }
+  $('saudeOuvindo').hidden = false;
+  E.escuta = new AbortController();
+  const r = await ouvir({ ms, sinal: E.escuta.signal });
+  E.escuta = null;
+  $('saudeOuvindo').hidden = true;
+  $('saudeOuvido').textContent = r?.texto ? `Ouvi: "${r.texto}"` : '(sem resposta)';
+  return r?.texto || null;
+}
+
+/**
+ * Executa as ações da máquina de estados, em ordem. `g` é a GERAÇÃO da conversa:
+ * botão e fechar avançam a geração, e a cadeia antiga para no próximo passo.
+ * (Uma flag booleana de interrupção foi descartada: quando o fechar chegava
+ * depois de a cadeia terminar, ela ficava pendurada e ENGOLIA a checagem
+ * seguinte — visto no teste E2E.)
+ */
+async function rodarAcoesSaude(acoes, g) {
+  for (const a of acoes) {
+    if (g !== E.saudeGeracao) return;
+    switch (a.tipo) {
+      case 'mostrar': if (!E.saude?.aberta) abrirSaude(E.checagem.motivo); break;
+      case 'falar': $('saudeFala').textContent = a.texto; await E.sirene.falar(a.texto, { urgente: true, forcar: true }); break;
+      case 'ouvir': {
+        const texto = await ouvirMotorista(a.ms);
+        if (g !== E.saudeGeracao || !E.checagem.ativa) return;
+        return rodarAcoesSaude(E.checagem.aoOuvir(texto, agora()), g);
+      }
+      case 'escalar': {
+        registrarIncidente({ chave: 'saude', nivel: 'critico', titulo: a.semResposta ? 'MOTORISTA NÃO RESPONDEU À CHECAGEM' : 'MOTORISTA PEDIU AJUDA',
+          detalhe: `${MOTIVOS[a.motivo]?.titulo || a.motivo}${a.resposta ? ` — "${a.resposta}"` : ''}` }, evidencia());
+        logAgente({ nivel: 'critico', texto: `✚ ALERTA DE SAÚDE: ${a.semResposta ? 'sem resposta' : `resposta "${a.resposta}"`} — avisando o responsável.` });
+        despacharAlerta({ motivo: a.motivo, resposta: a.resposta, semResposta: a.semResposta });   // em paralelo com a fala
+        break;
+      }
+      case 'atualizar': despacharAlerta({ motivo: E.checagem.motivo || 'manual', atualizacao: a.texto }); break;
+      case 'conversar': return conversarSaude(a.texto, g);
+      case 'fechar': {
+        if (a.bem) logAgente({ nivel: 'sistema', texto: `◈ Checagem de saúde: o motorista respondeu que está bem (${MOTIVOS[a.motivo]?.titulo || a.motivo}).` });
+        if (a.semResposta) logAgente({ nivel: 'aviso', texto: '◈ Checagem de saúde sem resposta — aviso ao responsável desligado nas configurações.' });
+        E.checagem.encerrar(); fecharSaude(); return;
+      }
+      default: break;
+    }
+  }
+}
+
+const executarSaude = acoes => {
+  const g = E.saudeGeracao;
+  E.filaSaude = E.filaSaude.then(() => rodarAcoesSaude(acoes, g)).catch(e => logAgente({ nivel: 'aviso', texto: `Checagem de saúde: ${e.message}` }));
+  return E.filaSaude;
+};
+
+function iniciarChecagem(motivo, saida) {
+  if (E.pausado) return;
+  const acoes = E.checagem.iniciar(motivo, agora());
+  if (!acoes.length) return;
+  logAgente({ nivel: 'critico', texto: `✚ CHECAGEM DE SAÚDE: ${MOTIVOS[motivo]?.titulo || motivo} — perguntando ao motorista.` });
+  E.sirene.vibrar([300, 120, 300]);
+  if (E.saude) E.saude.sinais = (saida?.condicoes || []).map(c => c.titulo);
+  executarSaude(acoes);
+}
+
+/** Botões da tela: interrompem a fala e a escuta em curso e passam à frente. */
+function interromperSaude() { E.saudeGeracao++; E.sirene.calar(); E.escuta?.abort(); }
+
+function botaoSaude(tipo) {
+  if (E.checagem.ativa) interromperSaude();
+  const acoes = E.checagem.aoBotao(tipo, agora());
+  if (tipo === 'ajuda' && !E.saude?.aberta) abrirSaude(E.checagem.motivo || 'manual');
+  executarSaude(acoes);
+}
+
+/**
+ * Depois do aviso ao responsável: o agente conversa (até 4 voltas) para colher
+ * sintomas e orientar segurança; sintomas novos viram atualização ao responsável.
+ * Sem agente configurado, frases fixas e os botões.
+ */
+async function conversarSaude(textoInicial, g) {
+  const s = E.saude;
+  if (!s) return;
+  let transcricao = textoInicial;
+  for (let volta = 0; volta < 4 && E.checagem.ativa; volta++) {
+    if (g !== E.saudeGeracao) return;
+    let fala = 'Se puder, me diga o que está sentindo.';
+    if (E.agente.pronto) {
+      try {
+        const r = await turnoChecagem({
+          historico: s.ia.historico,
+          entrada: pedidoChecagem({ motivo: s.motivo, sinais: s.sinais || [], transcricao, responsavelAvisado: !!s.envio?.ok, semResposta: !transcricao && volta === 0 }),
+          enviar: (tipo, msgs) => E.agente.enviar(tipo, msgs, { signal: AbortSignal.timeout(20000) }),
+        });
+        contabilizar(r.uso);
+        if (!r.recusa) {
+          s.ia.historico = r.mensagens;
+          fala = r.resposta.fala;
+          const novos = r.resposta.sintomas.filter(x => !s.ia.sintomas.has(x));
+          novos.forEach(x => s.ia.sintomas.add(x));
+          if (novos.length) {
+            $('saudeSintomas').replaceChildren(...[...s.ia.sintomas].map(x => Object.assign(document.createElement('li'), { textContent: x })));
+            despacharAlerta({ motivo: s.motivo, atualizacao: `Sintomas relatados pelo motorista: ${[...s.ia.sintomas].join(', ')}${r.resposta.estado === 'emergencia' ? ' — sinais de EMERGÊNCIA (orientado a ligar 192)' : ''}` });
+          }
+          if (g !== E.saudeGeracao) return;
+          if (r.resposta.encerrar && r.resposta.estado === 'bem') return rodarAcoesSaude(E.checagem.aoBotao('bem', agora()), g);
+          if (r.resposta.encerrar) { $('saudeFala').textContent = fala; await E.sirene.falar(fala, { urgente: true, forcar: true }); return; }
+        }
+      } catch (e) { logAgente({ nivel: 'aviso', texto: `Agente na checagem: ${e.message} — seguindo com frases fixas.` }); }
+    }
+    $('saudeFala').textContent = fala;
+    await E.sirene.falar(fala, { urgente: true, forcar: true });
+    if (g !== E.saudeGeracao) return;
+    const ouvido = await ouvirMotorista(10000);
+    if (g !== E.saudeGeracao || !E.checagem.ativa) return;
+    if (ouvido && interpretarResposta(ouvido) === 'bem') return rodarAcoesSaude(E.checagem.aoOuvir(ouvido, agora()), g);
+    transcricao = ouvido;
+  }
+}
+
+async function testarAlerta() {
+  if (!releConfigurado()) { $('infoSaude').textContent = 'Configure o relé (⚙ RESPONSÁVEL E RELÉ) antes de testar.'; return; }
+  $('infoSaude').textContent = 'Enviando mensagem de TESTE ao responsável…';
+  await despacharAlerta({ motivo: 'manual' }, { teste: true });
+}
+
+function configurarAlerta() {
+  const d = $('dlgAlerta');
+  $('inpMotorista').value = cfg.alerta.motorista; $('inpVeiculo').value = cfg.alerta.veiculo;
+  $('inpReleUrl').value = cfg.alerta.url; $('inpReleToken').value = cfg.alerta.token; $('inpTelResponsavel').value = cfg.alerta.telefone;
+  $('chkSemResposta').checked = cfg.alerta.semResposta; $('chkLocalAlerta').checked = cfg.alerta.local;
+  $('alertaErro').hidden = true;
+  const origem = E.status?.rele?.origem;
+  $('infoRele').textContent = E.servidorRele
+    ? 'Este servidor tem relé próprio: deixe o endereço em branco e use o token do RELE_TOKENS do .env.'
+    : origem ? `Esta publicação libera o relé em ${origem}.` : 'Esta publicação ainda não libera nenhum relé externo (variável SPY_RELE_URL no GitHub — ver ALERTAS.md).';
+  d.showModal();
 }
 
 /* ═════════════════ DESENHO ═════════════════ */
@@ -1237,7 +1479,43 @@ function ligarControles() {
     logAgente({ nivel: 'sistema', texto: `◈ Alarme silenciado por 30 s${origem ? ` (${origem})` : ''}.` });
   };
   $('btnSilenciar').addEventListener('click', () => silenciar());
-  $('btnEstouBem').addEventListener('click', () => silenciar('condutor confirmou que está bem'));
+  $('btnEstouBem').addEventListener('click', () => (E.checagem.ativa ? botaoSaude('bem') : silenciar('condutor confirmou que está bem')));
+
+  // checagem de saúde e alerta ao responsável
+  $('btnSaudeBem').addEventListener('click', () => botaoSaude('bem'));
+  $('btnSaudeAjuda').addEventListener('click', () => botaoSaude('ajuda'));
+  $('btnPedirAjuda').addEventListener('click', () => botaoSaude('ajuda'));
+  $('btnSaudeFechar').addEventListener('click', () => {
+    if (E.checagem.ativa && E.checagem.estado !== 'escalado') return botaoSaude('bem');   // fechar sem responder = "estou bem"
+    if (E.checagem.ativa) interromperSaude();
+    E.checagem.encerrar(); fecharSaude();
+  });
+  $('dlgSaude').addEventListener('cancel', ev => { ev.preventDefault(); $('btnSaudeFechar').click(); });   // Esc
+  $('btnConfigAlerta').addEventListener('click', configurarAlerta);
+  $('btnTestarAlerta').addEventListener('click', testarAlerta);
+  $('btnMicrofone').addEventListener('click', async () => {
+    const r = await liberarMicrofone();
+    $('infoSaude').textContent = r.ok
+      ? `Microfone liberado.${escutaDisponivel() ? '' : ' Atenção: este navegador não reconhece fala — a checagem usará só os botões (use Chrome, Edge ou Safari).'}`
+      : `Microfone: ${r.erro}`;
+  });
+  $('btnCancelarAlerta').addEventListener('click', () => $('dlgAlerta').close());
+  $('formAlerta').addEventListener('submit', ev => {
+    ev.preventDefault();
+    const url = $('inpReleUrl').value.trim(), token = $('inpReleToken').value.trim();
+    const erro = msg => { const p = $('alertaErro'); p.hidden = false; p.textContent = msg; };
+    if (url && !/^https:\/\//.test(url)) return erro('O endereço do relé precisa começar com https://');
+    if (token && token.length < 16) return erro('O token do aparelho tem no mínimo 16 caracteres (o mesmo do RELE_TOKENS).');
+    Object.assign(cfg.alerta, {
+      motorista: $('inpMotorista').value.trim().slice(0, 80), veiculo: $('inpVeiculo').value.trim().slice(0, 40),
+      url, token, telefone: $('inpTelResponsavel').value.trim().slice(0, 30),
+      semResposta: $('chkSemResposta').checked, local: $('chkLocalAlerta').checked,
+    });
+    E.checagem.cfg.escalarSemResposta = cfg.alerta.semResposta;
+    salvarCfg(); estadoRele();
+    $('dlgAlerta').close();
+    logAgente({ nivel: 'sistema', texto: `◈ Alerta ao responsável: ${releConfigurado() ? 'relé configurado' : 'sem relé (só os botões LIGAR)'}${cfg.alerta.semResposta ? ' · avisa se o motorista não responder' : ''}.` });
+  });
   const voz = $('btnVoz');
   const aplicarVoz = () => { voz.setAttribute('aria-pressed', String(cfg.voz)); voz.textContent = cfg.voz ? '🗣 VOZ LIGADA' : '🗣 VOZ DESLIGADA'; E.sirene.vozLigada = cfg.voz; };
   aplicarVoz();
@@ -1398,7 +1676,7 @@ function anotar(rotulo) {
 }
 
 // ?debug=1 expõe o estado no console do navegador (diagnóstico de campo)
-if (new URLSearchParams(location.search).has('debug')) window.SPY = { E, cfg };
+if (new URLSearchParams(location.search).has('debug')) window.SPY = { E, cfg, checagem: motivo => iniciarChecagem(motivo, null) };
 
 ligarControles();
 observarCameras();

@@ -9,13 +9,13 @@
      SHA-256 conferido a cada carga (spy-modelos-*), e este SW não apaga.
    · API do agente e qualquer origem de fora: SEMPRE rede, nunca cache.
    ═══════════════════════════════════════════════════════════════════════ */
-const VERSAO = 'spy-casca-v2';
+const VERSAO = 'spy-casca-v3';
 const CASCA = [
   './', 'index.html', 'manifest.webmanifest', 'css/spy.css',
   'js/inicio.js', 'js/nucleo.js', 'js/config.js', 'js/geometria.js', 'js/rastreador.js', 'js/motorista.js',
   'js/transito.js', 'js/vigilancia.js', 'js/anomalia.js', 'js/alertas.js', 'js/sirene.js', 'js/hud.js',
   'js/gravador.js', 'js/avaliacao.js', 'js/percepcao.js', 'js/agente.js',
-  'js/cameras.js', 'js/escuro.js', 'js/fauna.js',
+  'js/cameras.js', 'js/escuro.js', 'js/fauna.js', 'js/saude.js', 'js/escuta.js', 'js/spy/alerta.js',
   'js/spy/cerebro.js', 'js/spy/cliente.js', 'js/spy/incidentes.js',
   'icones/icone.svg', 'icones/icone-192.png',
 ];

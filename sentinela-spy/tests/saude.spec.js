@@ -103,6 +103,7 @@ test('alerta ao responsável: quem, o quê, onde (link de mapa), quando — sem 
   assert.match(a.quando, /04\/11\/2026.*15:30/);
   assert.match(a.aviso, /não é diagnóstico/);
   assert.equal(JSON.stringify(a).includes('data:image'), false);
+  assert.equal(montarAlerta({ motivo: 'manual', resposta: 'pedido de ajuda pelo botão' }).situacao, 'o motorista pediu ajuda pelo botão do aplicativo');
   const sem = montarAlerta({ motivo: 'mao_olhos', resposta: 'tô tonto' });
   assert.equal(sem.local, null); assert.equal(sem.motorista, 'não informado');
   assert.match(sem.situacao, /tô tonto/);

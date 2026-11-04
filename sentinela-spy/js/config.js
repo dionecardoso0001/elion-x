@@ -78,7 +78,7 @@ export const MODELOS = {
    para a fauna que o detector não conhece. */
 export const MODELOS_POR_MODO = {
   sentinela: ['objetos', 'pose'],
-  motorista: ['rosto', 'objetos'],
+  motorista: ['rosto', 'objetos', 'pose'],
   transito:  ['objetos', 'classificador'],
 };
 

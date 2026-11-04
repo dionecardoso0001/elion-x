@@ -153,6 +153,22 @@ export function maoNoPeito(pose, aspecto = 1) {
   return pontosDasMaos(pose, aspecto).some(m => m.centro.x >= xMin && m.centro.x <= xMax && m.centro.y >= yOmbro + 0.15 * largura && m.centro.y <= yMax);
 }
 
+/**
+ * Entre os esqueletos da cena, o do CONDUTOR: o nariz mais perto do rosto
+ * rastreado; sem rosto, o de ombros mais largos (o mais perto da câmera).
+ */
+export function esqueletoDoCondutor(poses, rostoPontos, aspecto = 1) {
+  if (!poses?.length) return null;
+  if (poses.length === 1) return poses[0];
+  const f = rostoPontos?.length >= 468 ? caixaDePontos(rostoPontos, -1) : null;
+  if (f) {
+    const c = centro(f);
+    return poses.reduce((m, p) => (Math.hypot((p[0].x - c.x) * aspecto, p[0].y - c.y) < Math.hypot((m[0].x - c.x) * aspecto, m[0].y - c.y) ? p : m));
+  }
+  const largura = p => (p[11] && p[12] ? Math.hypot((p[11].x - p[12].x) * aspecto, p[11].y - p[12].y) : 0);
+  return poses.reduce((m, p) => (largura(p) > largura(m) ? p : m));
+}
+
 const L = LIMIARES.motorista;
 const PISCADA_MAX_S = 0.4;   // episódio mais curto que isso é piscada, não fechamento lento
 const PISCADA_MIN_S = 0.05;
