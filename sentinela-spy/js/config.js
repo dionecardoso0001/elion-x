@@ -165,6 +165,11 @@ export const LIMIARES = {
     instabilidadeYawStd: 8,
     instabilidadeReversoes: 6,
     velocidadeMinimaMs: 2.8,     // ~10 km/h — abaixo disso, com GPS, o carro é tratado como parado
+    // mãos pelo esqueleto (pose) — gatilhos da CHECAGEM DE SAÚDE, não diagnóstico
+    maoOlhosS: 3.0,              // pedido do operador: mão nos olhos por mais de 3 s
+    maoOlhosCriticoS: 5.0,       // HEURÍSTICA — olho coberto 5 s em movimento = via fora de vista
+    maoPeitoS: 2.5,              // HEURÍSTICA — ajustar o cinto leva ~1–2 s; mão parada no peito, mais
+    maoToleranciaMs: 600,        // a pose "pisca": 0,6 s sem ver a mão não zera o cronômetro
   },
 
   transito: {

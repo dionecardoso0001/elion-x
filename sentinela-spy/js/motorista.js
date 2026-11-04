@@ -91,6 +91,68 @@ export function poseDaCabeca(p, aspecto = 1) {
   };
 }
 
+/* ── MÃOS pelo esqueleto (Pose Landmarker, 33 pontos) ──────────────────────
+   0 nariz · 2/5 olhos · 11/12 ombros · 15/16 punhos · 17/18 mínimos ·
+   19/20 indicadores · 21/22 polegares · 23/24 quadris. Distâncias em
+   unidades FÍSICAS (x corrigido pelo aspecto) e relativas ao próprio corpo:
+   a distância entre os olhos e a largura dos ombros são a régua — vale perto
+   ou longe da câmera. */
+const MAOS = [[15, 17, 19, 21], [16, 18, 20, 22]];
+const visivel = (p, min) => p && (p.visibility ?? 1) >= min;
+
+/** Pontos visíveis de cada mão (punho, mínimo, indicador, polegar) em coordenadas físicas. */
+export function pontosDasMaos(pose, aspecto = 1, visMin = 0.3) {
+  if (!pose || pose.length < 23) return [];
+  const out = [];
+  for (const idx of MAOS) {
+    const pts = idx.filter(i => visivel(pose[i], visMin)).map(i => ({ x: pose[i].x * aspecto, y: pose[i].y }));
+    if (pts.length >= 2) out.push({ pontos: pts, centro: { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length } });
+  }
+  return out;
+}
+
+/** Centros dos olhos e a distância entre eles: da malha facial (precisa) ou, sem ela, da pose. */
+export function olhosDe(rostoPontos, pose, aspecto = 1) {
+  const media = idx => ({ x: idx.reduce((s, i) => s + rostoPontos[i].x, 0) / idx.length * aspecto, y: idx.reduce((s, i) => s + rostoPontos[i].y, 0) / idx.length });
+  let a = null, b = null;
+  if (rostoPontos?.length >= 468) { a = media(OLHO_DIREITO); b = media(OLHO_ESQUERDO); }
+  else if (pose && visivel(pose[2], 0.3) && visivel(pose[5], 0.3)) {
+    a = { x: pose[2].x * aspecto, y: pose[2].y }; b = { x: pose[5].x * aspecto, y: pose[5].y };
+  }
+  if (!a) return null;
+  const distancia = Math.hypot(a.x - b.x, a.y - b.y);
+  return distancia > 1e-4 ? { a, b, distancia } : null;
+}
+
+/**
+ * Alguma mão sobre um dos olhos (coçando ou cobrindo)? Raio = 0,75 × distância
+ * entre os olhos: cobre a órbita, mas não a mão no queixo ou na boca (≥ 1 × a
+ * distância), postura comum de quem pensa ou come.
+ */
+export function maoNosOlhos(pose, rostoPontos, aspecto = 1) {
+  const olhos = olhosDe(rostoPontos, pose, aspecto);
+  if (!olhos) return false;
+  const raio = 0.75 * olhos.distancia;
+  return pontosDasMaos(pose, aspecto).some(m => m.pontos.some(p => [olhos.a, olhos.b].some(o => Math.hypot(p.x - o.x, p.y - o.y) <= raio)));
+}
+
+/**
+ * Mão sobre o CENTRO do peito: entre os ombros (sem as bordas, onde fica o cinto)
+ * e de 0,15 a 1,0 largura de ombro abaixo da linha deles. O volante fica mais
+ * abaixo; ajustar o cinto passa pela lateral e dura pouco — por isso o tempo mínimo.
+ */
+export function maoNoPeito(pose, aspecto = 1) {
+  if (!pose || pose.length < 25 || !visivel(pose[11], 0.5) || !visivel(pose[12], 0.5)) return false;
+  const oA = { x: pose[11].x * aspecto, y: pose[11].y }, oB = { x: pose[12].x * aspecto, y: pose[12].y };
+  const largura = Math.hypot(oA.x - oB.x, oA.y - oB.y);
+  if (largura < 1e-3) return false;
+  const xMin = Math.min(oA.x, oB.x) + 0.2 * largura, xMax = Math.max(oA.x, oB.x) - 0.2 * largura;
+  const yOmbro = (oA.y + oB.y) / 2;
+  let yMax = yOmbro + 1.0 * largura;
+  if (visivel(pose[23], 0.5) && visivel(pose[24], 0.5)) yMax = Math.min(yMax, (pose[23].y + pose[24].y) / 2 - 0.1 * largura);
+  return pontosDasMaos(pose, aspecto).some(m => m.centro.x >= xMin && m.centro.x <= xMax && m.centro.y >= yOmbro + 0.15 * largura && m.centro.y <= yMax);
+}
+
 const L = LIMIARES.motorista;
 const PISCADA_MAX_S = 0.4;   // episódio mais curto que isso é piscada, não fechamento lento
 const PISCADA_MIN_S = 0.05;
@@ -117,7 +179,29 @@ export class AnalisadorMotorista {
     this.celularVisto = null; this.celularDesde = null;
     this.ultimaPresenca = null; this.tempoPresente = 0;
     this.cabeca = [];              // {t, roll, yaw, pitch} — 5 s para instabilidade
+    this.maoOlhos = { desde: null, visto: null };
+    this.maoPeito = { desde: null, visto: null };
     this.ultimo = null;
+  }
+
+  /** Cronômetro com tolerância: a pose roda a ~8 Hz e "pisca" — 0,6 s sem ver não zera. */
+  #cronometro(st, agora, t) {
+    if (agora) { st.visto = t; if (st.desde == null) st.desde = t; }
+    else if (st.visto != null && t - st.visto > this.cfg.maoToleranciaMs) { st.desde = null; st.visto = null; }
+    return st.desde == null ? 0 : (t - st.desde) / 1000;
+  }
+
+  /** Mão no peito / nos olhos: valem com e sem rosto visível, e já durante a calibração. */
+  #condicoesMaos(maos, emMovimento, condicoes) {
+    if (maos.peitoS >= this.cfg.maoPeitoS) {
+      condicoes.push({ chave: 'mao_peito', nivel: emMovimento ? 'critico' : 'aviso', titulo: 'MÃO NO PEITO',
+        detalhe: `mão sobre o centro do peito há ${maos.peitoS.toFixed(1)} s — possível dor no peito; checagem de saúde iniciada`, voz: null });
+    }
+    if (maos.olhosS >= this.cfg.maoOlhosS) {
+      const crit = emMovimento && maos.olhosS >= this.cfg.maoOlhosCriticoS;   // olho coberto em movimento = via fora de vista
+      condicoes.push({ chave: 'mao_olhos', nivel: crit ? 'critico' : 'aviso', titulo: 'MÃO NOS OLHOS',
+        detalhe: `mão sobre os olhos há ${maos.olhosS.toFixed(1)} s — sono, irritação ou mal-estar; checagem de saúde iniciada`, voz: null });
+    }
   }
 
   recalibrar() {
@@ -129,21 +213,32 @@ export class AnalisadorMotorista {
 
   /**
    * @param {{t:number, rosto:null|{pontos:Array, blend?:Object}, aspecto:number,
-   *          celular?:boolean|null, velocidade?:number|null}} e
+   *          celular?:boolean|null, velocidade?:number|null, esqueleto?:Array|null, escuro?:boolean}} e
+   *   esqueleto: os 33 pontos da Pose do condutor (mãos nos olhos / no peito)
    */
-  processar({ t, rosto, aspecto = 16 / 9, celular = null, velocidade = null }) {
+  processar({ t, rosto, aspecto = 16 / 9, celular = null, velocidade = null, esqueleto = null, escuro = false }) {
     const dt = this.tAnterior == null ? 0 : Math.min(200, Math.max(0, t - this.tAnterior));
     this.tAnterior = t;
     const condicoes = [], eventos = [];
     const emMovimento = velocidade == null ? true : velocidade >= this.cfg.velocidadeMinimaMs;
+    const rostoPts = rosto?.pontos?.length >= 468 ? rosto.pontos : null;
+    const maos = {
+      olhosS: this.#cronometro(this.maoOlhos, !!esqueleto && maoNosOlhos(esqueleto, rostoPts, aspecto), t),
+      peitoS: this.#cronometro(this.maoPeito, !!esqueleto && maoNoPeito(esqueleto, aspecto), t),
+    };
+    this.#condicoesMaos(maos, emMovimento, condicoes);
+    const fechar = r => {   // motivo da checagem de saúde: o sinal mais grave ativo
+      const ordem = ['mao_peito', 'mal_subito', ...(escuro ? [] : ['ausente']), 'mao_olhos'];
+      r.metricas.checagem = ordem.find(k => r.condicoes.some(c => c.chave === k)) || null;
+      r.metricas.maoOlhosS = maos.olhosS; r.metricas.maoPeitoS = maos.peitoS;
+      return r;
+    };
 
     // celular: o detector roda a ~2 Hz; vale o último flagrante recente
     if (celular === true) { this.celularVisto = t; if (this.celularDesde == null) this.celularDesde = t; }
     if (this.celularVisto != null && t - this.celularVisto > 1500) { this.celularVisto = null; this.celularDesde = null; }
 
-    if (!rosto || !rosto.pontos || rosto.pontos.length < 468) {
-      return this.#semRosto(t, emMovimento, condicoes, eventos);
-    }
+    if (!rostoPts) return fechar(this.#semRosto(t, emMovimento, condicoes, eventos, escuro));
 
     const p = rosto.pontos, bl = rosto.blend || {};
     const earMed = (ear(p, OLHO_DIREITO, aspecto) + ear(p, OLHO_ESQUERDO, aspecto)) / 2;
@@ -264,7 +359,7 @@ export class AnalisadorMotorista {
       0.5 * clamp(perclos / 0.15, 0, 1) + 0.2 * clamp(this.bocejos.length / 3, 0, 1)
       + 0.15 * clamp(this.acenos.length / 3, 0, 1) + 0.15 * clamp(this.longos.length / 3, 0, 1), 0, 1));
 
-    if (!this.calib.pronta) { this.ultimo = metricas; return { metricas, condicoes, eventos }; }
+    if (!this.calib.pronta) { this.ultimo = metricas; return fechar({ metricas, condicoes, eventos }); }
 
     // ═════════════════ CONDIÇÕES ═════════════════
     const nivel = n => (emMovimento ? n : 'aviso'); // parado (GPS): nada vira sirene
@@ -336,10 +431,10 @@ export class AnalisadorMotorista {
     }
 
     this.ultimo = metricas;
-    return { metricas, condicoes, eventos };
+    return fechar({ metricas, condicoes, eventos });
   }
 
-  #semRosto(t, emMovimento, condicoes, eventos) {
+  #semRosto(t, emMovimento, condicoes, eventos, escuro = false) {
     if (this.episodio) this.episodio = null;   // sem rosto não se mede olho
     this.foraDesde = null; this.pendendoDesde = null; this.malDesde = null;
     const ausenteS = this.ultimaPresenca == null ? 0 : (t - this.ultimaPresenca) / 1000;
@@ -350,7 +445,9 @@ export class AnalisadorMotorista {
     // só acusa ausência de quem ESTAVA lá: câmera mal posicionada não é desmaio
     if (this.calib.pronta && this.tempoPresente >= 3000 && ausenteS >= this.cfg.ausenteS) {
       condicoes.push({ chave: 'ausente', nivel: emMovimento ? 'critico' : 'aviso', titulo: 'MOTORISTA FORA DE VISÃO',
-        detalhe: `rosto não detectado há ${ausenteS.toFixed(1)} s — possível desmaio ou câmera obstruída`,
+        detalhe: escuro
+          ? `rosto não detectado há ${ausenteS.toFixed(1)} s — pouca luz na cabine: a câmera não enxerga o rosto (luz interna ou câmera infravermelha)`
+          : `rosto não detectado há ${ausenteS.toFixed(1)} s — possível desmaio ou câmera obstruída`,
         voz: 'Alerta! Não consigo ver seu rosto. Se estiver passando mal, pare o veículo e peça ajuda.' });
     }
     return { metricas, condicoes, eventos };

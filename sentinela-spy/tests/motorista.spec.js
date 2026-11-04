@@ -154,3 +154,82 @@ test('celular só conta perto do rosto', () => {
   assert.equal(celularJuntoAoRosto([{ classe: 'cell phone', score: 0.8, x: 0.02, y: 0.05, w: 0.04, h: 0.08 }], pontos), false);
   assert.equal(celularJuntoAoRosto([{ classe: 'cup', score: 0.9, x: 0.58, y: 0.55, w: 0.04, h: 0.08 }], pontos), false);
 });
+
+/* ── mãos pelo esqueleto: gatilhos da checagem de saúde ── */
+import { maoNosOlhos, maoNoPeito, pontosDasMaos } from '../js/motorista.js';
+
+/** Esqueleto de 33 pontos de um condutor de frente: olhos, ombros, quadris e as duas mãos. */
+function esqueleto({ maoE = { x: 0.38, y: 0.97 }, maoD = { x: 0.62, y: 0.97 } } = {}) {
+  const p = Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5, z: 0, visibility: 0.05 }));
+  const por = (i, x, y, v = 0.95) => { p[i] = { x, y, z: 0, visibility: v }; };
+  por(0, 0.5, 0.31); por(2, 0.47, 0.28); por(5, 0.53, 0.28);
+  por(11, 0.40, 0.50); por(12, 0.60, 0.50); por(23, 0.42, 0.90); por(24, 0.58, 0.90);
+  const mao = (base, c) => { por(base[0], c.x, c.y); por(base[1], c.x + 0.012, c.y + 0.012); por(base[2], c.x + 0.01, c.y - 0.015); por(base[3], c.x - 0.012, c.y - 0.01); };
+  mao([15, 17, 19, 21], maoE); mao([16, 18, 20, 22], maoD);
+  return p;
+}
+const ASP = 16 / 9;
+
+test('mão no PEITO: centro do peito sim; volante, lateral (cinto) e ombro não', () => {
+  assert.equal(maoNoPeito(esqueleto({ maoD: { x: 0.50, y: 0.64 } }), ASP), true);
+  assert.equal(maoNoPeito(esqueleto(), ASP), false, 'mãos no volante (abaixo do peito)');
+  assert.equal(maoNoPeito(esqueleto({ maoD: { x: 0.41, y: 0.64 } }), ASP), false, 'na lateral, onde passa o cinto');
+  assert.equal(maoNoPeito(esqueleto({ maoD: { x: 0.50, y: 0.51 } }), ASP), false, 'na linha dos ombros (coçando o pescoço)');
+  const semOmbro = esqueleto({ maoD: { x: 0.50, y: 0.64 } }); semOmbro[11].visibility = 0.1;
+  assert.equal(maoNoPeito(semOmbro, ASP), false, 'sem ombros visíveis não há régua');
+});
+
+test('mão nos OLHOS: sobre o olho sim; no queixo/boca e no volante não; funciona sem malha facial (olhos da pose)', () => {
+  assert.equal(maoNosOlhos(esqueleto({ maoD: { x: 0.47, y: 0.285 } }), null, ASP), true);
+  assert.equal(maoNosOlhos(esqueleto({ maoD: { x: 0.50, y: 0.37 } }), null, ASP), false, 'mão no queixo');
+  assert.equal(maoNosOlhos(esqueleto(), null, ASP), false);
+  assert.equal(pontosDasMaos(esqueleto(), ASP).length, 2);
+});
+
+test('analisador: mão no peito 2,5 s → MÃO NO PEITO crítico em movimento + gatilho da checagem; piscada da pose não zera', () => {
+  const a = new AnalisadorMotorista();
+  let r;
+  for (let t = 0; t <= 3200; t += 100) {
+    const piscou = t >= 1500 && t < 1800;   // pose perdeu a mão por 0,3 s
+    r = a.processar({ t, rosto: null, aspecto: ASP, esqueleto: esqueleto(piscou ? {} : { maoD: { x: 0.50, y: 0.64 } }) });
+  }
+  const c = r.condicoes.find(x => x.chave === 'mao_peito');
+  assert.ok(c, JSON.stringify(r.condicoes));
+  assert.equal(c.nivel, 'critico');
+  assert.equal(r.metricas.checagem, 'mao_peito');
+  assert.ok(r.metricas.maoPeitoS >= 3);
+  // mão sai por 1 s → zera
+  for (let t = 3300; t <= 4400; t += 100) r = a.processar({ t, rosto: null, aspecto: ASP, esqueleto: esqueleto() });
+  assert.equal(r.metricas.maoPeitoS, 0);
+  assert.ok(!r.condicoes.some(x => x.chave === 'mao_peito'));
+});
+
+test('analisador: mão nos olhos > 3 s → aviso + gatilho; > 5 s em movimento → crítico; parado (GPS) fica aviso', () => {
+  const rodar = (ate, velocidade = null) => {
+    const a = new AnalisadorMotorista();
+    let r;
+    for (let t = 0; t <= ate; t += 100) r = a.processar({ t, rosto: null, aspecto: ASP, velocidade, esqueleto: esqueleto({ maoD: { x: 0.47, y: 0.285 } }) });
+    return r;
+  };
+  let r = rodar(2800);
+  assert.ok(!r.condicoes.some(x => x.chave === 'mao_olhos'), 'menos de 3 s não conta');
+  r = rodar(3300);
+  assert.equal(r.condicoes.find(x => x.chave === 'mao_olhos').nivel, 'aviso');
+  assert.equal(r.metricas.checagem, 'mao_olhos');
+  r = rodar(5300);
+  assert.equal(r.condicoes.find(x => x.chave === 'mao_olhos').nivel, 'critico');
+  r = rodar(5300, 0);   // GPS diz parado
+  assert.equal(r.condicoes.find(x => x.chave === 'mao_olhos').nivel, 'aviso');
+});
+
+test('sem rosto no escuro: o alerta explica a pouca luz e NÃO dispara checagem de saúde (limite do sensor)', () => {
+  const a = new AnalisadorMotorista();
+  a.calib.pronta = true; a.tempoPresente = 5000; a.ultimaPresenca = 0;
+  const r = a.processar({ t: 4000, rosto: null, aspecto: ASP, escuro: true });
+  const c = r.condicoes.find(x => x.chave === 'ausente');
+  assert.match(c.detalhe, /pouca luz/);
+  assert.equal(r.metricas.checagem, null);
+  const b = new AnalisadorMotorista();
+  b.calib.pronta = true; b.tempoPresente = 5000; b.ultimaPresenca = 0;
+  assert.equal(b.processar({ t: 4000, rosto: null, aspecto: ASP, escuro: false }).metricas.checagem, 'ausente');
+});
