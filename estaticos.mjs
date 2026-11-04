@@ -17,6 +17,37 @@
    (realpath), que pega link simbólico e qualquer apelido restante.
    ═══════════════════════════════════════════════════════════════════════ */
 
+/**
+ * Cabeçalhos de segurança de tudo que a INTERFACE serve.
+ * · frame-ancestors/X-Frame-Options: só a própria plataforma enquadra suas
+ *   páginas (o visor da central). Sem isto, qualquer site aberto pelo
+ *   operador podia enquadrar http://localhost:3001 — endereço previsível — e
+ *   induzir cliques em botões que enviam WhatsApp ou leem e-mail (clickjacking).
+ * · Permissions-Policy: câmera, microfone e GPS só para a própria origem,
+ *   nunca para iframe de terceiro.
+ */
+export const CABECALHOS_SEGURANCA = Object.freeze({
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'SAMEORIGIN',
+  'Content-Security-Policy': "frame-ancestors 'self'",
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Permissions-Policy': 'camera=(self), microphone=(self), geolocation=(self)',
+});
+
+/**
+ * Conteúdo de TERCEIRO servido na nossa origem pelo proxy do visor.
+ * A remoção de <script> por regex não basta: manipulador de evento
+ * (<img src=x onerror=…>) passa direto e <scr<script></script>ipt> se
+ * remonta depois da remoção. Servido na MESMA origem, esse script alcançaria
+ * /api/memory, /api/email e o envio de WhatsApp. O sandbox sem allow-scripts
+ * impede qualquer script; sem allow-same-origin o documento ganha origem
+ * OPACA — mesmo que algo rodasse, não seria "da casa".
+ */
+export const CABECALHOS_TERCEIRO = Object.freeze({
+  'X-Content-Type-Options': 'nosniff',
+  'Content-Security-Policy': "sandbox allow-popups allow-popups-to-escape-sandbox allow-forms; script-src 'none'; object-src 'none'",
+});
+
 /** Arquivos da raiz que a interface carrega (levantado de todos os HTML/JS do cliente). */
 export const PUBLICOS_RAIZ = new Set([
   'index.html', 'sentinela.html', 'cyber.html', 'brain.html', 'whatsapp.html',

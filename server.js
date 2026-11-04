@@ -32,7 +32,7 @@ import {
 import { analisarDocumento, sumarioTexto, fatosTexto, expandirBusca } from './compreensao.mjs';
 import { openaiStream, openaiVisao, openaiTexto, devoDesviar, motivoDoDesvio } from './fallback.mjs';
 import * as SENTINELA from './sentinela.mjs';
-import { classificarCaminho, caminhoProibido } from './estaticos.mjs';
+import { classificarCaminho, caminhoProibido, CABECALHOS_SEGURANCA, CABECALHOS_TERCEIRO } from './estaticos.mjs';
 import { blocoIdentidade, blocoIdentidadeCurto, lerPerfil } from './perfil.mjs';
 import { investigarAntenas, garantirNoAr, TOOL_SIGNALX, BASE as SIGNALX_URL } from './signalx.mjs';
 
@@ -4774,7 +4774,8 @@ IMPORTANTE: responda com JSON CRU, sem cercas de código markdown (nada de crase
         // recursos não-HTML (imagens, css, fontes…) repassados intactos
         if (!/text\/html/i.test(ct)) {
           const buf = Buffer.from(await r.arrayBuffer());
-          res.writeHead(r.status, { 'Content-Type': ct, 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
+          // SVG/XML navegados direto também executam script: o sandbox vale para o repasse
+          res.writeHead(r.status, { 'Content-Type': ct, 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*', ...CABECALHOS_TERCEIRO });
           return res.end(buf);
         }
 
@@ -4817,8 +4818,9 @@ IMPORTANTE: responda com JSON CRU, sem cercas de código markdown (nada de crase
           return res.end(`<body style="margin:0;background:#04101c"><script>parent.postMessage({elx:'visor',estado:'vazio'},'*')</script></body>`);
         }
 
-        // servido do MESMO origin → sem X-Frame-Options, o iframe renderiza o site completo
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        // servido do MESMO origin → sem X-Frame-Options, o iframe renderiza o site completo;
+        // o sandbox (CABECALHOS_TERCEIRO) garante que nada dele roda como se fosse da casa
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', ...CABECALHOS_TERCEIRO });
         return res.end(html);
       } catch (e) {
         /* Antes eu pintava o erro DENTRO do quadro. O quadro carregava, a
@@ -5395,6 +5397,7 @@ IMPORTANTE: responda com JSON CRU, sem cercas de código markdown (nada de crase
         'Content-Type': MIME[ext] || 'application/octet-stream',
         'Cache-Control': noCache ? 'no-cache, no-store, must-revalidate' : 'public, max-age=86400',
         ...(noCache ? { Pragma: 'no-cache', Expires: '0' } : {}),
+        ...CABECALHOS_SEGURANCA,
       });
       res.end(data);
     });
