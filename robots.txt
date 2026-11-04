@@ -1,0 +1,6 @@
+# ELION-X — central de comando PESSOAL (câmera, e-mail, WhatsApp, memória).
+# Nada aqui é para buscador: o túnel do acesso mobile põe este servidor na
+# internet, e ser encontrado só aumenta a superfície de ataque.
+# Decisão deliberada — ver docs/SENTINELA.md, seção "Qualidade medida".
+User-agent: *
+Disallow: /

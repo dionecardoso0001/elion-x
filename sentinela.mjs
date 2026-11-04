@@ -18,6 +18,7 @@
 import fs from 'fs';
 import path from 'path';
 import { VERSAO, MODELOS, MEDIAPIPE_VERSAO } from './assets/sentinela/config.js';
+import { ENTREGADOR } from './estaticos.mjs';
 
 export const MODELO = process.env.SENTINELA_MODELO || 'claude-opus-5-5';
 /* Esforço "low": a tarefa é avaliar UMA cena com telemetria pronta —
@@ -224,7 +225,7 @@ export function infoMediapipe(raiz) {
 }
 
 /** Atende /vendor/mediapipe/<versão>/<arquivo>. Devolve true se a rota era dela. */
-export function servirMediapipe(url, res, raiz) {
+export function servirMediapipe(url, res, raiz, req = null) {
   const m = url.pathname.match(/^\/vendor\/mediapipe\/([^/]+)\/(.+)$/);
   if (!m) return false;
   const info = infoMediapipe(raiz);
@@ -235,17 +236,12 @@ export function servirMediapipe(url, res, raiz) {
     return true;
   }
   const arq = path.join(info.dir, m[2]);
-  fs.stat(arq, (err, st) => {
-    if (err) { res.writeHead(404); return res.end(); }
-    res.writeHead(200, {
-      'Content-Type': ARQUIVOS_MP.get(m[2]),
-      'Content-Length': st.size,
-      'Cache-Control': 'public, max-age=31536000, immutable',
-      'X-Content-Type-Options': 'nosniff',
-      'Cross-Origin-Resource-Policy': 'same-origin',
-    });
-    fs.createReadStream(arq).pipe(res);
-  });
+  // brotli/gzip + ETag: o WASM de 13,5 MB viaja como 3,3 MB (medido) — diferença que o celular sente
+  ENTREGADOR.servir(req || { method: 'GET', headers: {} }, res, arq, {
+    tipo: ARQUIVOS_MP.get(m[2]),
+    cacheControl: 'public, max-age=31536000, immutable',
+    cabecalhos: { 'X-Content-Type-Options': 'nosniff', 'Cross-Origin-Resource-Policy': 'same-origin' },
+  }).catch(() => { if (!res.headersSent) res.writeHead(404); res.end(); });
   return true;
 }
 

@@ -32,7 +32,7 @@ import {
 import { analisarDocumento, sumarioTexto, fatosTexto, expandirBusca } from './compreensao.mjs';
 import { openaiStream, openaiVisao, openaiTexto, devoDesviar, motivoDoDesvio } from './fallback.mjs';
 import * as SENTINELA from './sentinela.mjs';
-import { classificarCaminho, caminhoProibido, CABECALHOS_SEGURANCA, CABECALHOS_TERCEIRO } from './estaticos.mjs';
+import { classificarCaminho, caminhoProibido, destinoEstatico, ENTREGADOR, CABECALHOS_SEGURANCA, CABECALHOS_TERCEIRO } from './estaticos.mjs';
 import { blocoIdentidade, blocoIdentidadeCurto, lerPerfil } from './perfil.mjs';
 import { investigarAntenas, garantirNoAr, TOOL_SIGNALX, BASE as SIGNALX_URL } from './signalx.mjs';
 
@@ -4393,6 +4393,7 @@ const MIME = {
   // módulo servido como octet-stream) e WASM com o próprio tipo compila em streaming
   '.mjs': 'application/javascript; charset=utf-8', '.wasm': 'application/wasm',
   '.tflite': 'application/octet-stream', '.task': 'application/octet-stream',
+  '.txt': 'text/plain; charset=utf-8',
 };
 // análise profunda da SENTINELA: no máximo 8 por minuto, venha de onde vier o pedido
 const limiteSentinela = SENTINELA.criarLimitador({ porMinuto: 8 });
@@ -4464,7 +4465,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ── SENTINELA: runtime de visão pela própria origem (lista branca de arquivos) ──
-    if (req.method === 'GET' && SENTINELA.servirMediapipe(url, res, __dirname)) return;
+    if ((req.method === 'GET' || req.method === 'HEAD') && SENTINELA.servirMediapipe(url, res, __dirname, req)) return;
 
     // ── SENTINELA: o que existe localmente (runtime, modelos, agente) ──
     if (req.method === 'GET' && url.pathname === '/api/sentinela/status') {
@@ -5380,27 +5381,29 @@ IMPORTANTE: responda com JSON CRU, sem cercas de código markdown (nada de crase
        NTFS abre .env como ENV~1 e data/ como data::$INDEX_ALLOCATION. */
     const relPedido = decodeURIComponent(url.pathname).replace(/^[\\/]+/, '');
     const classe = classificarCaminho(relPedido);
-    const naoEncontrado = () => { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Not Found'); };
+    const naoEncontrado = () => { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', ...CABECALHOS_SEGURANCA }); res.end('Not Found'); };
     if (classe === 'negado') return naoEncontrado();
     let filePath = path.join(__dirname, classe === 'publico' && relPedido ? relPedido : 'index.html');
     if (!filePath.startsWith(__dirname)) { res.writeHead(403); return res.end('Forbidden'); }
-    if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) filePath = path.join(__dirname, 'index.html');
+    // arquivo inexistente/fora da lista → 404 real; rota sem extensão → página principal (estaticos.mjs)
+    const existe = classe === 'publico' && fs.existsSync(filePath) && !fs.statSync(filePath).isDirectory();
+    const destino = destinoEstatico(relPedido, classe, existe);
+    if (destino === '404') return naoEncontrado();
+    if (destino === 'principal') filePath = path.join(__dirname, 'index.html');
     // segunda barreira: o caminho REAL no disco (link simbólico, apelido do sistema de arquivos)
     const relReal = path.relative(RAIZ_REAL, fs.realpathSync.native(filePath));
     if (relReal.startsWith('..') || path.isAbsolute(relReal) || caminhoProibido(relReal)) return naoEncontrado();
-    fs.readFile(filePath, (err, data) => {
-      if (err) { res.writeHead(404); return res.end('Not Found'); }
-      const ext = path.extname(filePath).toLowerCase();
-      // HTML/CSS/JS sempre revalidados → celular e PC sempre pegam a versão mais nova
-      const noCache = ['.html', '.css', '.js', '.json'].includes(ext) || filePath.endsWith('index.html');
-      res.writeHead(200, {
-        'Content-Type': MIME[ext] || 'application/octet-stream',
-        'Cache-Control': noCache ? 'no-cache, no-store, must-revalidate' : 'public, max-age=86400',
-        ...(noCache ? { Pragma: 'no-cache', Expires: '0' } : {}),
-        ...CABECALHOS_SEGURANCA,
-      });
-      res.end(data);
-    });
+    const ext = path.extname(filePath).toLowerCase();
+    /* HTML/CSS/JS/JSON: "no-cache" + ETag = o navegador guarda, mas REVALIDA a cada
+       uso (304 de poucos bytes quando nada mudou) — celular e PC continuam pegando a
+       versão mais nova. Antes era "no-store": baixava tudo de novo, sem compressão,
+       em toda visita. */
+    const revalidar = ['.html', '.css', '.js', '.json', '.txt', '.webmanifest'].includes(ext);
+    ENTREGADOR.servir(req, res, filePath, {
+      tipo: MIME[ext] || 'application/octet-stream',
+      cacheControl: revalidar ? 'no-cache' : 'public, max-age=86400',
+      cabecalhos: CABECALHOS_SEGURANCA,
+    }).catch(() => (res.headersSent ? res.destroy() : naoEncontrado()));
   } catch (e) {
     console.error('[server]', e.message);
     if (!res.headersSent) json(res, 500, { error: e.message });
