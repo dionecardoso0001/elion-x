@@ -30,6 +30,7 @@ import {
   trapezio, pontoNoPoligono, base, meiaLarguraEm, regressaoLinear,
   radianos, aparar,
 } from './geometria.js';
+import { descreverAnimal } from './fauna.js';
 
 const L = LIMIARES.transito;
 const VEIC = new Set(CLASSES.veiculos), ANIM = new Set(CLASSES.animais), OBST = new Set(CLASSES.obstaculos);
@@ -102,7 +103,10 @@ export class AnalisadorTransito {
   definirROI(roi) { this.cfg.roi = { ...this.cfg.roi, ...roi }; }
   definirFOV(fov) { this.cfg.fovHorizontalGraus = fov; }
 
-  processar({ t, trilhas, aspecto = 16 / 9, velocidade = null }) {
+  /**
+   * @param {object} [o.fauna]  segundo estágio (fauna.js): { refino(id) → {categoria, score}|null, achados: [] }
+   */
+  processar({ t, trilhas, aspecto = 16 / 9, velocidade = null, fauna = null }) {
     const roi = this.cfg.roi, poly = trapezio(roi);
     const condicoes = [], eventos = [], alvos = [];
     const vivos = new Set();
@@ -169,10 +173,18 @@ export class AnalisadorTransito {
         }
       }
 
-      if (tipo === 'animal' && noCorredor && maduro) {
-        alvo.risco = (z != null && z <= 40) || ttc <= this.cfg.ttcAvisoS ? 'critico' : 'aviso';
-        condicoes.push({ chave: `animal:${tr.id}`, grupo: 'animal', nivel: alvo.risco, titulo: 'ANIMAL NA PISTA',
-          detalhe: `${nome} no corredor do veículo (${zTxt})`, voz: 'Cuidado! Animal na pista!' });
+      if (tipo === 'animal') {
+        // segundo estágio: "ave" vira GALINHA, "vaca" vira BOI/VACA, cão de qualquer raça vira CÃO
+        const esp = descreverAnimal(tr.classe, fauna?.refino?.(tr.id) || null);
+        alvo.especie = esp.nome; alvo.porte = esp.porte;
+        if (noCorredor && maduro) {
+          const perto = (z != null && z <= 40) || ttc <= this.cfg.ttcAvisoS;
+          // animal pequeno é aviso: desviar bruscamente dele causa mais acidente que o animal
+          alvo.risco = esp.porte === 'grande' && perto ? 'critico' : 'aviso';
+          condicoes.push({ chave: `animal:${tr.id}`, grupo: 'animal', nivel: alvo.risco, titulo: `ANIMAL NA PISTA: ${esp.nome}`,
+            detalhe: `${esp.nome}${esp.refinado ? ` (classificação ${(esp.score * 100).toFixed(0)}%)` : ''} no corredor do veículo (${zTxt})${esp.porte === 'pequeno' ? ' — animal pequeno: reduza, não desvie bruscamente' : ''}`,
+            voz: esp.porte === 'grande' ? `Cuidado! ${esp.fala} na pista!` : `Atenção, ${esp.fala} na pista. Reduza sem desviar bruscamente.` });
+        }
       }
 
       if (tipo === 'obstaculo' && noCorredor && maduro) {
@@ -214,11 +226,26 @@ export class AnalisadorTransito {
       }
     }
 
+    // ── varredura do corredor: o que o detector não propõe (cobra, tatu, jabuti…) ──
+    const achados = [];
+    for (const a of fauna?.achados || []) {
+      // ladrilho que já tem um animal detectado (com caixa) não repete o alerta
+      const jaVisto = alvos.some(al => al.tipo === 'animal' && trilhas.some(tr => tr.id === al.id
+        && tr.x < a.caixa.x + a.caixa.w && tr.x + tr.w > a.caixa.x && tr.y < a.caixa.y + a.caixa.h && tr.y + tr.h > a.caixa.y));
+      if (jaVisto) continue;
+      contagem.animal++;
+      achados.push(a);
+      condicoes.push({ chave: `fauna:${a.indice}`, grupo: 'fauna', nivel: a.porte === 'grande' ? 'critico' : 'aviso',
+        titulo: `POSSÍVEL ${a.nome} NA PISTA`,
+        detalhe: `classificação ${(a.score * 100).toFixed(0)}% em ${a.seguidas} leituras seguidas de um trecho do corredor, sem caixa do detector — confirme visualmente`,
+        voz: a.porte === 'grande' ? `Cuidado! Possível ${a.fala} na pista!` : `Atenção, possível ${a.fala} na pista.` });
+    }
+
     for (const id of this.estado.keys()) if (!vivos.has(id)) this.estado.delete(id);
 
     return {
       metricas: { contagem, lider: metricasLider, velocidade, roi },
-      condicoes, eventos, alvos,
+      condicoes, eventos, alvos, achados,
     };
   }
 }

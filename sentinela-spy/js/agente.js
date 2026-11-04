@@ -26,7 +26,7 @@ const PROTOCOLO = [
   [/^instabilidade/, 'reduzir a velocidade; se houver tontura, parar em local seguro'],
   [/^(distracao|celular)/, 'olhos na via; celular só com o veículo parado'],
   [/^(colisao|aproximacao|distancia)/, 'aliviar o acelerador e ampliar a distância'],
-  [/^(pedestre|travessia|animal|obstaculo)/, 'reduzir a velocidade e preparar a frenagem'],
+  [/^(pedestre|travessia|animal|fauna|obstaculo)/, 'reduzir a velocidade e preparar a frenagem'],
   [/^anomalia/, 'revisar o alvo: padrão incomum para esta cena'],
 ];
 

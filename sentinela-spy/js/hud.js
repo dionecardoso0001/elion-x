@@ -415,7 +415,7 @@ export class HUD {
       let cor = a.tipo === 'veiculo' ? C.ok : a.tipo === 'pedestre' ? C.info : C.aviso;
       if (a.risco === 'aviso') cor = C.aviso;
       if (a.risco === 'critico') cor = C.critico;
-      const linhas = [`TGT-${String(tr.id).padStart(2, '0')} ${rotulo(tr.classe)}${a.z != null ? ` ~${a.z.toFixed(0)} m` : ''}`];
+      const linhas = [`TGT-${String(tr.id).padStart(2, '0')} ${a.especie || rotulo(tr.classe)}${a.z != null ? ` ~${a.z.toFixed(0)} m` : ''}`];
       if (isFinite(a.ttc) && a.ttc < 10) linhas.push(`TTC ${a.ttc.toFixed(1)} s`);
       if (a.lider) linhas.push('▸ VEÍCULO-LÍDER');
       this.#colchetes(r, cor, 14, a.lider ? 3 : 2);
@@ -426,6 +426,13 @@ export class HUD {
         for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(cx, cy, rr, giro + (k * Math.PI) / 2, giro + (k * Math.PI) / 2 + 0.7); g.stroke(); }
       }
       this.#placa(r.x, r.y, linhas, cor);
+    }
+    // fauna achada pela varredura do corredor (sem caixa do detector): o trecho inteiro, tracejado
+    for (const f of t.achados || []) {
+      const r = this.caixa(f.caixa), cor = f.porte === 'grande' ? C.critico : C.aviso;
+      g.setLineDash([6 * d, 4 * d]); g.strokeStyle = cor; g.lineWidth = 2 * d;
+      g.strokeRect(r.x, r.y, r.w, r.h); g.setLineDash([]);
+      this.#placa(r.x, r.y, [`POSSÍVEL ${f.nome}`, `${(f.score * 100).toFixed(0)}% · ${f.seguidas} leituras`], cor);
     }
   }
 }

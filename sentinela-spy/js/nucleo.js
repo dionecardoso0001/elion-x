@@ -14,7 +14,8 @@ import { LIMIARES, MODELOS, MODELOS_POR_MODO, VERSAO, rotulo, limiaresEfetivos, 
 import { GravadorCampo, ROTULOS_ANOTACAO } from './gravador.js';
 import { Rastreador } from './rastreador.js';
 import { AnalisadorMotorista, celularJuntoAoRosto } from './motorista.js';
-import { AnalisadorTransito } from './transito.js';
+import { AnalisadorTransito, tipoDe } from './transito.js';
+import { FaunaPista, ladrilhosCorredor, recorteDistante, fundirDeteccoes } from './fauna.js';
 import { AnalisadorVigilancia } from './vigilancia.js';
 import { GestorAlertas } from './alertas.js';
 import { narrar, relatorioSituacao, montarTelemetria } from './agente.js';
@@ -61,10 +62,12 @@ const E = {
   vigilancia: new AnalisadorVigilancia(),
   alertas: new GestorAlertas(),
   trilhas: [], poses: [], rosto: null, saida: null,
-  ultimo: { objetos: 0, pose: 0, relatorio: 0, dom: 0, auto: -Infinity, luz: 0 },
+  ultimo: { objetos: 0, pose: 0, relatorio: 0, dom: 0, auto: -Infinity, luz: 0, fauna: 0 },
   // visão no escuro: luz medida, quadro realçado para os detectores, sensor de movimento
   luz: new MonitorLuz(), mov: new DetectorMovimento(), cena: null,
   cvLuz: null, cvRealce: null, realcadoEm: -1,
+  // fauna na pista: segundo estágio (classificador) e segunda passada do detector no trecho distante
+  fauna: new FaunaPista(), cvRecorte: null, chamadasDet: 0,
   tVideo: -1, fps: 0, quadrosEm: [], infMs: 0, errosSeguidos: 0,
   gps: { velocidade: null, precisao: null, em: null, watch: null, erro: null },
   zonaEdicao: null, gravador: null, composicao: null, evidencias: 0, analisando: false,
@@ -118,7 +121,7 @@ async function boot() {
   E.status = await fetch('plataforma.json', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).catch(() => null);
   if (E.status) {
     const nModelos = Object.values(E.status.modelos || {}).filter(Boolean).length;
-    logBoot('ok', `instalação própria · runtime MediaPipe ${E.status.mediapipe?.versao} · ${nModelos}/3 modelos na própria origem`);
+    logBoot('ok', `instalação própria · runtime MediaPipe ${E.status.mediapipe?.versao} · ${nModelos}/${Object.keys(MODELOS).length} modelos na própria origem`);
   } else {
     logBoot('aviso', 'instalação sem runtime local (plataforma.json ausente) — usando CDN e modelos do Google');
   }
@@ -420,7 +423,55 @@ function fonteDeteccao(v) {
   return cv;
 }
 
-function reiniciarEscuro() { E.mov.reiniciar(); E.luz.reiniciar(); E.cena = null; E.realcadoEm = -1; }
+function reiniciarEscuro() { E.mov.reiniciar(); E.luz.reiniciar(); E.cena = null; E.realcadoEm = -1; E.fauna.reiniciar(); }
+
+/* ═════════════════ FAUNA NA PISTA ═════════════════ */
+const dimsDe = f => ({ W: f.videoWidth || f.width, H: f.videoHeight || f.height });
+
+/** Recorte normalizado da fonte num canvas (largura máxima `maxW`, proporção preservada). */
+function recortar(fonte, ret, maxW) {
+  const { W, H } = dimsDe(fonte);
+  const sx = Math.max(0, Math.round(ret.x * W)), sy = Math.max(0, Math.round(ret.y * H));
+  const sw = Math.max(1, Math.min(W - sx, Math.round(ret.w * W))), sh = Math.max(1, Math.min(H - sy, Math.round(ret.h * H)));
+  const esc = Math.min(1, maxW / sw);
+  const dw = Math.max(1, Math.round(sw * esc)), dh = Math.max(1, Math.round(sh * esc));
+  if (!E.cvRecorte) E.cvRecorte = document.createElement('canvas');
+  const cv = E.cvRecorte;
+  if (cv.width !== dw || cv.height !== dh) { cv.width = dw; cv.height = dh; }
+  ctx2d(cv).drawImage(fonte, sx, sy, sw, sh, 0, 0, dw, dh);
+  return cv;
+}
+
+/** Caixa do alvo com folga e QUADRADA em pixels — o classificador vê 224×224. */
+function recorteQuadrado(b, aspecto, folga = 0.2) {
+  const lado = Math.max(b.w * aspecto, b.h) * (1 + folga);   // em alturas de quadro
+  const w = Math.min(1, lado / aspecto), h = Math.min(1, lado);
+  const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+  return { x: Math.max(0, Math.min(1 - w, cx - w / 2)), y: Math.max(0, Math.min(1 - h, cy - h / 2)), w, h };
+}
+
+/** ~5 Hz, no máximo 2 classificações: refino dos animais detectados e, no que sobrar, ladrilhos do corredor. */
+function faunaDoQuadro(fonte, t, aspecto) {
+  const P = E.percepcao;
+  if (!P.tarefas.classificador) return null;
+  if (t - E.ultimo.fauna >= 200) {
+    E.ultimo.fauna = t;
+    let feitas = 0;
+    const animais = E.trilhas.filter(tr => tipoDe(tr.classe) === 'animal' && tr.hits >= 3 && E.fauna.precisaRefino(tr.id, t));
+    for (const tr of animais.slice(0, 2)) {
+      const r = P.classificar(recortar(fonte, recorteQuadrado(tr, aspecto), 224));
+      if (r) E.fauna.registrarRefino(tr.id, r, t);
+      feitas++;
+    }
+    const lad = ladrilhosCorredor(E.transito.cfg.roi, aspecto);
+    for (const i of E.fauna.proximosLadrilhos(lad.length, Math.max(0, 2 - feitas))) {
+      const r = P.classificar(recortar(fonte, lad[i], 224));
+      if (r) E.fauna.registrarLadrilho(i, lad[i], r, t);
+    }
+    E.fauna.esquecer(new Set(E.trilhas.map(tr => tr.id)));
+  }
+  return { refino: id => E.fauna.refino(id), achados: E.fauna.achados(t) };
+}
 
 function processar(v, t) {
   const t0 = performance.now();
@@ -447,8 +498,19 @@ function processar(v, t) {
     E.trilhas = [];
     saida = E.motorista.processar({ t, rosto: E.rosto, aspecto, celular, velocidade: cfg.gpsMov ? velocidadeGPS() : null, escuro: E.luz.escuro });
   } else {
-    if (t - E.ultimo.objetos >= 45) { E.ultimo.objetos = t; const d = P.objetos(fonte, t); if (d) E.trilhas = E.rastreador.atualizar(d, t); }
-    saida = E.transito.processar({ t, trilhas: E.trilhas, aspecto, velocidade: velocidadeGPS() });
+    if (t - E.ultimo.objetos >= 45) {
+      E.ultimo.objetos = t;
+      let d = P.objetos(fonte, t);
+      // 1 a cada 3 passadas, se o aparelho aguenta: o detector olha de novo só o trecho
+      // DISTANTE do corredor, em resolução maior — cão pequeno e galinha a 40 m somem no quadro inteiro
+      if (d && ++E.chamadasDet % 3 === 0 && E.infMs < 80) {
+        const ret = recorteDistante(E.transito.cfg.roi, aspecto);
+        const dr = P.objetos(recortar(fonte, ret, 640), t);
+        if (dr) d = fundirDeteccoes(d, dr, ret);
+      }
+      if (d) E.trilhas = E.rastreador.atualizar(d, t);
+    }
+    saida = E.transito.processar({ t, trilhas: E.trilhas, aspecto, velocidade: velocidadeGPS(), fauna: faunaDoQuadro(fonte, t, aspecto) });
   }
   E.infMs = 0.85 * E.infMs + 0.15 * (performance.now() - t0);
   E.quadrosEm.push(t);
@@ -525,7 +587,7 @@ function desenhar(t) {
       mostrarCalor: cfg.calor, calor: cfg.calor ? E.vigilancia.normalidade.mapaDeCalor() : null, grade: E.vigilancia.normalidade.cfg.grade,
     } : null,
     motorista: E.modo === 'motorista' ? { rosto: E.rosto, metricas: s.metricas } : null,
-    transito: E.modo === 'transito' ? { roi: E.transito.cfg.roi, alvos: s.alvos } : null,
+    transito: E.modo === 'transito' ? { roi: E.transito.cfg.roi, alvos: s.alvos, achados: s.achados } : null,
   });
   if (E.gravador) compor(E.composicao);
 }
