@@ -23,6 +23,7 @@ import { pedidoInterpretacao, pedidoRelatorio, pedidoDiagnostico, lerResposta, e
 import { ClienteAgente, detectarServidor } from './spy/cliente.js';
 import { RegistroIncidentes } from './spy/incidentes.js';
 import { Percepcao, abrirCamera, listarCameras, preVoo } from './percepcao.js';
+import { nomeCamera, opcoesCameras, resumoCameras, diferencaCameras, proximaCamera, explicarErroCamera, selecionaveis } from './cameras.js';
 import { Sirene } from './sirene.js';
 import { HUD } from './hud.js';
 
@@ -51,7 +52,7 @@ const salvarCfg = () => { try { localStorage.setItem(CHAVE_CFG, JSON.stringify(c
 /* ── estado da operação ── */
 const E = {
   modo: cfg.modo, rodando: false, pausado: false,
-  stream: null, deviceId: null, facing: null,
+  stream: null, deviceId: null, facing: null, cameras: [],
   status: null, percepcao: null, hud: null, sirene: new Sirene(),
   rastreador: new Rastreador({ scoreNovo: LIMIARES.deteccao.scoreNovaTrilha }),
   motorista: new AnalisadorMotorista(),
@@ -178,6 +179,14 @@ async function boot() {
 /* ═════════════════ CÂMERA ═════════════════ */
 const facingPadrao = modo => (modo === 'motorista' ? 'user' : modo === 'transito' ? 'environment' : null);
 
+const nomeDoDispositivo = id => {
+  const lista = selecionaveis(E.cameras);
+  const i = lista.findIndex(c => c.deviceId === id);
+  return i >= 0 ? nomeCamera(lista[i], i) : '';
+};
+/** Erro com a instrução em português, preservando o nome do erro original (o boot decide por ele). */
+const erroDeCamera = (e, id) => Object.assign(new Error(explicarErroCamera(e, nomeDoDispositivo(id))), { name: e?.name || 'Error' });
+
 async function abrir(modo, { deviceId = cfg.cameras[modo] || null, facing = facingPadrao(modo) } = {}) {
   const v = $('video');
   let stream;
@@ -185,8 +194,9 @@ async function abrir(modo, { deviceId = cfg.cameras[modo] || null, facing = faci
   catch (e) {
     if (deviceId && (e.name === 'OverconstrainedError' || e.name === 'NotFoundError')) {
       delete cfg.cameras[modo]; salvarCfg();       // câmera salva sumiu (outro aparelho, USB desplugada)
-      stream = await abrirCamera({ facingMode: facing });
-    } else throw e;
+      logAgente({ nivel: 'aviso', texto: `Câmera escolhida indisponível (${nomeDoDispositivo(deviceId) || 'desconectada'}) — usando a automática.` });
+      try { stream = await abrirCamera({ facingMode: facing }); } catch (e2) { throw erroDeCamera(e2, null); }
+    } else throw erroDeCamera(e, deviceId);
   }
   E.stream?.getTracks().forEach(t => t.stop());
   E.stream = stream;
@@ -201,7 +211,7 @@ async function abrir(modo, { deviceId = cfg.cameras[modo] || null, facing = faci
   E.deviceId = s.deviceId || deviceId;
   E.facing = s.facingMode || facing;
   aplicarEspelho();
-  await preencherCameras();
+  await atualizarCameras();   // com a permissão concedida, o navegador revela o nome de TODAS as câmeras
   E.tVideo = -1;
 }
 
@@ -213,12 +223,58 @@ function aplicarEspelho() {
   $('btnEspelhar').setAttribute('aria-pressed', String(esp));
 }
 
-async function preencherCameras() {
-  const sel = $('selCamera');
+/**
+ * Lista as câmeras do aparelho (webcam integrada, USB como a MX, captura de vídeo,
+ * câmera virtual) no seletor. Com relatar=true, conta no registro o que entrou
+ * ou saiu desde a última leitura — é chamada no "devicechange".
+ */
+async function atualizarCameras({ relatar = false } = {}) {
   const cams = await listarCameras();
-  sel.replaceChildren(new Option('padrão do modo', ''));
-  cams.forEach((c, i) => sel.append(new Option(c.label || `câmera ${i + 1}`, c.deviceId)));
-  sel.value = cfg.cameras[E.modo] || '';
+  if (relatar && E.cameras.length) {
+    const { entraram, sairam } = diferencaCameras(E.cameras, cams);
+    const lista = selecionaveis(cams), antes = selecionaveis(E.cameras);
+    entraram.forEach(c => logAgente({ nivel: 'sistema', texto: `◈ Câmera conectada: ${nomeCamera(c, lista.indexOf(c))}` }));
+    sairam.forEach(c => logAgente({ nivel: 'aviso', texto: `Câmera desconectada: ${nomeCamera(c, antes.indexOf(c))}` }));
+  }
+  E.cameras = cams;
+  const sel = $('selCamera');
+  const salva = cfg.cameras[E.modo] || '';
+  const escolhida = selecionaveis(cams).some(c => c.deviceId === salva) ? salva : '';
+  sel.replaceChildren(...opcoesCameras(cams, { ativaId: E.deviceId, escolhidaId: escolhida || null }).map(o => new Option(o.texto, o.valor)));
+  sel.value = escolhida;
+  $('infoCameras').textContent = resumoCameras(cams);
+  $('rCamera').textContent = nomeDoDispositivo(E.deviceId) || '--';
+  // no PC não existe frontal/traseira: o botão passa a percorrer as câmeras conectadas
+  $('btnTrocarCam').textContent = E.facing ? '⇄ FRONTAL/TRASEIRA' : '⇄ PRÓXIMA CÂMERA';
+}
+
+/** Câmera plugada ou removida com a operação em curso. */
+function observarCameras() {
+  let pendente = null;
+  navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+    clearTimeout(pendente);   // o Windows dispara vários eventos por troca: espera assentar
+    pendente = setTimeout(async () => {
+      await atualizarCameras({ relatar: true });
+      const ativaSumiu = E.rodando && E.deviceId && !selecionaveis(E.cameras).some(c => c.deviceId === E.deviceId);
+      if (ativaSumiu) {
+        delete cfg.cameras[E.modo]; salvarCfg();
+        try { await abrir(E.modo, { deviceId: null }); logAgente({ nivel: 'aviso', texto: 'A câmera em uso foi desconectada — passei para a automática.' }); }
+        catch (e) { logAgente({ nivel: 'aviso', texto: `Câmera: ${e.message}` }); }
+      }
+    }, 400);
+  });
+}
+
+async function trocarCamera() {
+  cfg.espelhar = null;
+  if (E.facing) {   // celular: alterna frontal/traseira
+    delete cfg.cameras[E.modo]; salvarCfg();
+    return abrir(E.modo, { deviceId: null, facing: E.facing === 'user' ? 'environment' : 'user' });
+  }
+  const proxima = proximaCamera(E.cameras, E.deviceId);
+  if (!proxima) { logAgente({ nivel: 'aviso', texto: 'Só uma câmera detectada. Conecte outra (USB) e ela aparece na lista sozinha.' }); return; }
+  cfg.cameras[E.modo] = proxima; salvarCfg();
+  await abrir(E.modo, { deviceId: proxima });
 }
 
 /* ═════════════════ GPS ═════════════════ */
@@ -993,15 +1049,23 @@ function ligarControles() {
   document.body.dataset.aba = 'colDir';
 
   $('selCamera').addEventListener('change', async e => {
+    const anterior = cfg.cameras[E.modo];
     if (e.target.value) cfg.cameras[E.modo] = e.target.value; else delete cfg.cameras[E.modo];
     salvarCfg();
-    try { await abrir(E.modo); } catch (er) { logAgente({ nivel: 'aviso', texto: `Câmera: ${er.message}` }); }
+    try { await abrir(E.modo); }
+    catch (er) {
+      // a câmera anterior continua aberta (só é fechada quando a nova abre): volta a escolha para ela
+      if (anterior) cfg.cameras[E.modo] = anterior; else delete cfg.cameras[E.modo];
+      salvarCfg(); await atualizarCameras();
+      logAgente({ nivel: 'aviso', texto: `Câmera: ${er.message}` });
+    }
   });
   $('btnTrocarCam').addEventListener('click', async () => {
-    delete cfg.cameras[E.modo]; salvarCfg();
-    const proximo = E.facing === 'user' ? 'environment' : 'user';
-    cfg.espelhar = null;
-    try { await abrir(E.modo, { deviceId: null, facing: proximo }); } catch (er) { logAgente({ nivel: 'aviso', texto: `Câmera: ${er.message}` }); }
+    try { await trocarCamera(); } catch (er) { logAgente({ nivel: 'aviso', texto: `Câmera: ${er.message}` }); await atualizarCameras(); }
+  });
+  $('btnProcurarCam').addEventListener('click', async () => {
+    await atualizarCameras({ relatar: true });
+    anunciar($('infoCameras').textContent);
   });
   $('btnEspelhar').addEventListener('click', () => {
     const atual = document.body.classList.contains('espelhado');
@@ -1201,4 +1265,5 @@ function anotar(rotulo) {
 if (new URLSearchParams(location.search).has('debug')) window.SPY = { E, cfg };
 
 ligarControles();
+observarCameras();
 boot().catch(e => erroBoot(e.message));

@@ -96,8 +96,10 @@
   <aside class="col" id="colEsq" aria-label="Controles">
     <section class="painel">
       <h2>◈ SENSOR ÓPTICO</h2>
-      <label class="campo">Câmera<select id="selCamera"><option value="">padrão do modo</option></select></label>
+      <label class="campo">Câmera<select id="selCamera"><option value="">automática (padrão da missão)</option></select></label>
+      <p class="dica" id="infoCameras" aria-live="polite">As câmeras do aparelho aparecem aqui depois que a câmera for liberada.</p>
       <div class="linha-btns">
+        <button id="btnProcurarCam" class="btn" type="button" title="lista de novo as câmeras conectadas (USB, integrada, virtual)">⟳ PROCURAR CÂMERAS</button>
         <button id="btnTrocarCam" class="btn">⇄ FRONTAL/TRASEIRA</button>
         <button id="btnEspelhar" class="btn" aria-pressed="false">⇋ ESPELHAR</button>
         <button id="btnNV" class="btn" aria-pressed="false" title="filtro de visão noturna — só na exibição; a IA vê a imagem original">◐ FILTRO NV</button>
@@ -251,6 +253,7 @@
   <span>DELEGADO <b id="rBackend">--</b></span>
   <span>RUNTIME <b id="rRuntime">--</b></span>
   <span>GPS <b id="rGps">--</b></span>
+  <span>CÂMERA <b id="rCamera">--</b></span>
   <span class="priv">🔒 percepção no aparelho · agente de IA sob demanda</span>
 </footer>
 
