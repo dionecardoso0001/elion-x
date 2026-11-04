@@ -1,0 +1,58 @@
+# Publica o Sentinela Spy no GitHub Pages — o ENDEREÇO PRÓPRIO da plataforma:
+#   https://<usuário>.github.io/<repositório>/
+# Pré-requisito (uma vez): Settings → Pages → Build and deployment → Source: GitHub Actions.
+# Em hospedagem estática o agente roda no modo "chave própria" (a chave do operador
+# fica no aparelho dele e vai só para api.anthropic.com). Modelos incluídos com SHA-256
+# conferido no build — o site não depende do Google em tempo de execução.
+name: Publicar no GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  construir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 'lts/*'
+          cache: npm
+      - name: Instalar dependências
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Testes
+        run: npm test
+      - name: Runtime, SDK e modelos (SHA-256 conferido)
+        run: npm run preparar
+      - name: Montar dist/
+        run: npm run build
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: dist
+
+  publicar:
+    needs: construir
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.publicacao.outputs.page_url }}
+    steps:
+      - id: publicacao
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
