@@ -596,24 +596,77 @@ function renderZonas() {
     li.append(n, b); return li;
   }));
 }
+/* Desenho de zona — ponteiro OU teclado (WCAG 2.1.1). Durante a edição o visor
+   vira um widget focável (role=application) com cursor próprio; fora dela, o
+   canvas volta a ser decorativo (aria-hidden) e sai da ordem de tabulação. */
+const ROTULO_EDITOR = 'Editor de zona. Setas movem o cursor (Shift: ajuste fino), Espaço marca o vértice, '
+  + 'Backspace desfaz o último, Enter fecha a zona, Esc cancela.';
+const anunciar = txt => { $('srInfo').textContent = txt; };
+const pct = v => `${Math.round(v * 100)}%`;
 function iniciarZona() {
-  E.zonaEdicao = { tipo: $('selTipoZona').value, pontos: [] };
+  E.zonaEdicao = { tipo: $('selTipoZona').value, pontos: [], cursor: { x: 0.5, y: 0.5 } };
   document.body.classList.add('editando');
   $('edicaoZona').hidden = false; $('dicaZona').hidden = false;
+  const hud = $('hud');
+  hud.removeAttribute('aria-hidden');
+  hud.setAttribute('role', 'application'); hud.setAttribute('tabindex', '0'); hud.setAttribute('aria-label', ROTULO_EDITOR);
+  hud.focus({ preventScroll: true });
 }
-function cancelarZona() {
+function cancelarZona() { if (encerrarEdicaoZona()) anunciar('Edição de zona cancelada.'); }
+/** Sai do modo de edição e restaura o visor decorativo. Devolve se havia edição aberta. */
+function encerrarEdicaoZona() {
+  const estava = !!E.zonaEdicao, hud = $('hud'), foco = document.activeElement;
   E.zonaEdicao = null;
+  clearTimeout(E.tAnuncioCursor);
   document.body.classList.remove('editando');
   $('edicaoZona').hidden = true; $('dicaZona').hidden = true;
+  hud.setAttribute('aria-hidden', 'true');
+  for (const a of ['role', 'tabindex', 'aria-label']) hud.removeAttribute(a);
+  // devolve o foco só se ele estava no editor (ou se perderia num botão que acabou de sumir);
+  // trocar de missão pela aba não deve arrancar o foco da aba
+  if (estava && (foco === hud || foco === document.body || $('edicaoZona').contains(foco))) $('btnZona').focus({ preventScroll: true });
+  return estava;
 }
 function fecharZona() {
   const z = E.zonaEdicao;
-  if (!z || z.pontos.length < 3) { logAgente({ nivel: 'aviso', texto: 'Uma zona precisa de pelo menos 3 vértices.' }); return; }
+  if (!z || z.pontos.length < 3) {
+    const msg = `Uma zona precisa de pelo menos 3 vértices${z ? ` — marcados: ${z.pontos.length}` : ''}.`;
+    logAgente({ nivel: 'aviso', texto: msg }); anunciar(msg); return;
+  }
   const usados = new Set(cfg.zonas.map(x => x.nome));
   const nome = ALFABETO.find(n => !usados.has(n)) || `Z${cfg.zonas.length + 1}`;
   cfg.zonas.push({ id: `z${Date.now().toString(36)}`, nome, tipo: z.tipo, pontos: z.pontos });
-  salvarCfg(); renderZonas(); cancelarZona();
-  logAgente({ nivel: 'sistema', texto: `◈ PERÍMETRO ${nome} estabelecido (${z.tipo === 'restrita' ? 'acesso restrito' : 'monitorado'})` });
+  salvarCfg(); renderZonas(); encerrarEdicaoZona();
+  const tipo = z.tipo === 'restrita' ? 'acesso restrito' : 'monitorado';
+  logAgente({ nivel: 'sistema', texto: `◈ PERÍMETRO ${nome} estabelecido (${tipo})` });
+  anunciar(`Zona ${nome} criada com ${z.pontos.length} vértices (${tipo}).`);
+}
+/** Teclado do editor de zona. Devolve true quando a tecla foi consumida. */
+function teclaEditorZona(ev) {
+  const z = E.zonaEdicao, c = z.cursor;
+  const passo = ev.shiftKey ? 0.005 : 0.02;
+  const sx = E.hud?.espelhar ? -1 : 1;   // visor espelhado: → continua indo para a direita NA TELA
+  const mov = { ArrowLeft: [-sx, 0], ArrowRight: [sx, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[ev.key];
+  if (mov) {
+    c.x = Math.min(1, Math.max(0, c.x + mov[0] * passo));
+    c.y = Math.min(1, Math.max(0, c.y + mov[1] * passo));
+    // anuncia a posição só quando o operador para de mover (evita fala a cada tecla)
+    clearTimeout(E.tAnuncioCursor);
+    E.tAnuncioCursor = setTimeout(() => anunciar(`Cursor em ${pct(E.hud?.espelhar ? 1 - c.x : c.x)} da largura, ${pct(c.y)} da altura.`), 400);
+    return true;
+  }
+  clearTimeout(E.tAnuncioCursor);         // a confirmação de vértice não pode ser atropelada pela posição
+  if (ev.key === ' ') {
+    z.pontos.push({ x: c.x, y: c.y });
+    anunciar(`Vértice ${z.pontos.length} marcado.${z.pontos.length >= 3 ? ' Enter fecha a zona.' : ''}`);
+    return true;
+  }
+  if (ev.key === 'Backspace' || ev.key === 'Delete') {
+    if (z.pontos.pop()) anunciar(`Último vértice removido — restam ${z.pontos.length}.`);
+    return true;
+  }
+  if (ev.key === 'Enter') { fecharZona(); return true; }
+  return false;
 }
 
 /* ═════════════════ GRAVAÇÃO / CAPTURA / EXPORTAÇÃO ═════════════════ */
@@ -741,7 +794,7 @@ function ligarControles() {
   $('hud').addEventListener('pointerdown', ev => {
     if (!E.zonaEdicao || !E.hud) return;
     const p = E.hud.normalizar(ev.clientX, ev.clientY);
-    if (p) E.zonaEdicao.pontos.push(p);
+    if (p) { E.zonaEdicao.pontos.push(p); E.zonaEdicao.cursor = { ...p }; }
   });
   const chk = (id, chave, aoMudar) => {
     const c = $(id); c.checked = !!cfg[chave];
@@ -779,10 +832,18 @@ function ligarControles() {
   // atalhos de teclado (operador de mesa)
   addEventListener('keydown', ev => {
     if (ev.target.closest('input, select, textarea')) return;
-    if (ev.key === 'Escape' && E.zonaEdicao) cancelarZona();
-    if (ev.key === 'Enter' && E.zonaEdicao) fecharZona();
-    if (ev.key.toLowerCase() === 's' && E.rodando) $('btnSilenciar').click();
-    const atalho = { v: 'verdadeiro', f: 'falso_alarme', p: 'perdeu', m: 'marca' }[ev.key.toLowerCase()];
+    if (E.zonaEdicao) {
+      if (ev.key === 'Escape') { ev.preventDefault(); cancelarZona(); return; }
+      // Enter/Espaço num botão são do botão: antes, Enter em "✕ CANCELAR" salvava a zona e depois cancelava
+      const noVisor = ev.target === $('hud') || ev.target === document.body;
+      if (noVisor && !ev.ctrlKey && !ev.metaKey && !ev.altKey && teclaEditorZona(ev)) { ev.preventDefault(); return; }
+    }
+    // atalhos de uma letra não disparam com modificador: Ctrl+F (buscar), Ctrl+P (imprimir) e
+    // Ctrl+V (colar) gravavam anotações falsas de campo durante uma sessão
+    if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.repeat) return;
+    const k = ev.key.toLowerCase();
+    if (k === 's' && E.rodando) $('btnSilenciar').click();
+    const atalho = { v: 'verdadeiro', f: 'falso_alarme', p: 'perdeu', m: 'marca' }[k];
     if (atalho && E.campo.ativo) anotar(atalho);
   });
 

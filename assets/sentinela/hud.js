@@ -222,6 +222,20 @@ export class HUD {
       g.fillStyle = C.info;
       for (const p of pts) { g.beginPath(); g.arc(p.x, p.y, 4 * d, 0, Math.PI * 2); g.fill(); }
     }
+    // cursor do editor (teclado): retícula + aresta provisória até o último vértice
+    if (s.zonaEdicao?.cursor) {
+      const c = this.px(s.zonaEdicao.cursor.x, s.zonaEdicao.cursor.y), r = 9 * d;
+      const ult = s.zonaEdicao.pontos.at(-1);
+      if (ult) {
+        const u = this.px(ult.x, ult.y);
+        g.setLineDash([2 * d, 4 * d]); this.#polilinha([u, c], C.info, 1, false); g.setLineDash([]);
+      }
+      g.strokeStyle = C.info; g.lineWidth = 1.5 * d; g.beginPath();
+      g.moveTo(c.x - 2 * r, c.y); g.lineTo(c.x - r / 2, c.y); g.moveTo(c.x + r / 2, c.y); g.lineTo(c.x + 2 * r, c.y);
+      g.moveTo(c.x, c.y - 2 * r); g.lineTo(c.x, c.y - r / 2); g.moveTo(c.x, c.y + r / 2); g.lineTo(c.x, c.y + 2 * r);
+      g.stroke();
+      g.beginPath(); g.arc(c.x, c.y, r, 0, Math.PI * 2); g.stroke();
+    }
     // esqueletos
     if (s.mostrarPoses) {
       for (const lm of s.poses || []) {

@@ -6,7 +6,7 @@
 <!-- Defesa em profundidade: mesmo que algo injete script na página, ele não
      consegue enviar quadro de câmera para fora — conexões só para a própria
      plataforma, para os modelos do Google e para o runtime no CDN. -->
-<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'none'; connect-src 'self' https://storage.googleapis.com https://cdn.jsdelivr.net">
+<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'none'; font-src 'self'; connect-src 'self' https://storage.googleapis.com https://cdn.jsdelivr.net">
 <title>ELION-X · SENTINELA</title>
 <meta name="description" content="SENTINELA — visão computacional tática do ELION-X: vigilância com IA (objetos, área restrita, objeto abandonado, anomalias), monitor de fadiga e mal-estar do motorista e alerta de colisão no trânsito. Processamento no próprio aparelho.">
 <meta name="theme-color" content="#020604">
@@ -16,8 +16,16 @@
 <link rel="manifest" href="sentinela.webmanifest">
 <link rel="icon" href="assets/elion.png">
 <link rel="apple-touch-icon" href="assets/elion.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<!-- fontes servidas daqui (assets/fontes, OFL-1.1): sem CSS de terceiro bloqueando
+     a pintura, sem o IP do operador indo para o Google e funcionando offline.
+     Pré-carga + font-display:optional = zero deslocamento de layout: só as 6 que a
+     tela de boot usa (pré-carga que não é usada vira aviso no console). -->
+<link rel="preload" href="assets/fontes/share-tech-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fontes/orbitron-latin-900-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fontes/orbitron-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fontes/rajdhani-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fontes/rajdhani-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fontes/rajdhani-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="assets/sentinela.css">
 </head>
 <body data-modo="sentinela" data-nivel="5">
@@ -42,7 +50,7 @@
     <h1 id="bootTitulo">ELION<b>-X</b> <span>// SENTINELA · núcleo de visão tática</span></h1>
     <p class="boot-sub">Agente <b>SAFER-X</b> · percepção em tempo real no próprio aparelho</p>
 
-    <ol id="bootLog" class="boot-log" aria-live="polite"></ol>
+    <ol id="bootLog" class="boot-log" aria-live="polite" aria-label="Registro de inicialização" tabindex="0"></ol>
     <div class="boot-barra" role="progressbar" aria-label="Carga do núcleo" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bootBarra"><i id="bootFill"></i></div>
 
     <fieldset class="boot-modos">
@@ -79,6 +87,7 @@
 
 <!-- ▓▓ GRADE ▓▓ -->
 <main id="grade">
+  <h1 class="sr-only">SENTINELA — console de visão computacional tática do ELION-X</h1>
 
   <aside class="col" id="colEsq" aria-label="Controles">
     <section class="painel">
@@ -124,7 +133,7 @@
         <button id="btnFecharZona" class="btn btn-ok">✔ FECHAR ZONA</button>
         <button id="btnCancelarZona" class="btn">✕ CANCELAR</button>
       </div>
-      <p class="dica" id="dicaZona" hidden>Toque/clique nos cantos da área sobre o vídeo (mínimo 3). Depois, FECHAR ZONA.</p>
+      <p class="dica" id="dicaZona" hidden>Toque ou clique nos cantos da área sobre o vídeo (mínimo 3). Pelo teclado: <b>setas</b> movem o cursor, <b>Espaço</b> marca o vértice, <b>Enter</b> fecha, <b>Esc</b> cancela.</p>
       <ul id="listaZonas" class="lista-zonas" aria-label="Zonas definidas"></ul>
       <label class="chk"><input type="checkbox" id="chkPoses" checked> esqueletos (pose)</label>
       <label class="chk"><input type="checkbox" id="chkCalor"> mapa de calor da normalidade</label>
@@ -186,7 +195,7 @@
       <div id="sobreposicao" class="sobreposicao" hidden><div class="sob-caixa"><b id="sobTitulo">CARREGANDO</b><span id="sobTexto"></span><div class="boot-barra"><i id="sobFill"></i></div></div></div>
       <button id="btnEstouBem" class="btn-estou-bem" hidden>ESTOU BEM — SILENCIAR</button>
     </div>
-    <div id="ativas" class="ativas" aria-label="Alertas ativos"></div>
+    <div id="ativas" class="ativas" role="group" aria-label="Alertas ativos"></div>
     <div id="ticker" class="ticker" aria-hidden="true"></div>
     <nav id="abas" class="abas" aria-label="Painéis">
       <button data-aba="colDir" aria-pressed="true">◈ AGENTE &amp; TELEMETRIA</button>
@@ -197,7 +206,7 @@
   <aside class="col" id="colDir" aria-label="Agente e telemetria">
     <section class="painel painel-agente">
       <h2>◈ AGENTE SAFER-X <span id="agenteStatus" class="selo">LOCAL</span></h2>
-      <ol id="agenteLog" class="agente-log" aria-label="Registro do agente"></ol>
+      <ol id="agenteLog" class="agente-log" aria-label="Registro do agente" tabindex="0"></ol>
       <div class="linha-btns">
         <button id="btnAnalise" class="btn btn-primario-sm">◈ ANÁLISE PROFUNDA</button>
         <label class="chk"><input type="checkbox" id="chkAutoAnalise"> <span>auto em evento crítico <small>(≥ 45 s)</small></span></label>

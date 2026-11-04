@@ -6,6 +6,27 @@
    vermelho = crítico — e sempre redundantes com texto e som, nunca só cor.
    Contraste do texto principal sobre o fundo: ~17:1.
    ═══════════════════════════════════════════════════════════════════════ */
+
+/* Fontes AUTO-HOSPEDADAS (Fontsource 5.3.0, subconjunto latin — cobre o
+   português inteiro; licença SIL OFL-1.1 em assets/fontes/LICENSE-*.txt).
+   Antes: CSS do fonts.googleapis.com bloqueando a 1ª pintura (Lighthouse:
+   ~450 ms no celular), IP do operador enviado ao Google a cada visita e,
+   offline, o HUD perdia a tipografia. Share Tech Mono só existe em 400: os
+   pesos 600/700 do mono continuam sintetizados pelo navegador, como antes.
+   font-display: OPTIONAL (não swap): com swap, a troca da fonte deslocava o
+   layout — CLS 0,159 medido no Lighthouse mobile, acima do limite "bom" de
+   0,1. Com optional + <link rel=preload> no HTML, o Chrome segura a 1ª
+   pintura até a fonte pré-carregada chegar (ou um prazo curto); se a rede
+   estiver lenta, fica a fonte de reserva naquela visita — sem pulo de layout
+   — e a fonte já baixada entra na próxima. */
+@font-face { font-family: 'Orbitron'; font-style: normal; font-weight: 500; font-display: optional; src: url(fontes/orbitron-latin-500-normal.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Orbitron'; font-style: normal; font-weight: 700; font-display: optional; src: url(fontes/orbitron-latin-700-normal.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Orbitron'; font-style: normal; font-weight: 900; font-display: optional; src: url(fontes/orbitron-latin-900-normal.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Rajdhani'; font-style: normal; font-weight: 500; font-display: optional; src: url(fontes/rajdhani-latin-500-normal.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Rajdhani'; font-style: normal; font-weight: 600; font-display: optional; src: url(fontes/rajdhani-latin-600-normal.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Rajdhani'; font-style: normal; font-weight: 700; font-display: optional; src: url(fontes/rajdhani-latin-700-normal.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Share Tech Mono'; font-style: normal; font-weight: 400; font-display: optional; src: url(fontes/share-tech-mono-latin-400-normal.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
 :root {
   --c-fundo: #020604;
   --c-sup: #05100b;
@@ -19,7 +40,7 @@
   --c-critico-txt: #ff6378;
   --c-texto: #d7ffe9;
   --c-fraco: #79b394;
-  --c-tenue: #3f735a;
+  --c-tenue: #569474;   /* ≥ 5,05:1 no pior fundo (era #3f735a: 3,27:1, reprovado no WCAG 1.4.3) */
   --f-display: 'Orbitron', 'Share Tech Mono', ui-monospace, monospace;
   --f-ui: 'Rajdhani', 'Segoe UI', system-ui, sans-serif;
   --f-mono: 'Share Tech Mono', ui-monospace, 'Cascadia Mono', Menlo, monospace;
@@ -294,7 +315,9 @@ kbd { font: 700 10px var(--f-mono); padding: 1px 5px; border: 1px solid currentC
 .lista-zonas { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
 .lista-zonas li { display: flex; align-items: center; justify-content: space-between; gap: 6px; font: 600 12.5px var(--f-mono); padding: 5px 7px; border: 1px solid #0e3322; }
 .lista-zonas li .restrita { color: var(--c-critico-txt); } .lista-zonas li .monitorada { color: var(--c-aviso); }
-.lista-zonas button { background: none; border: 1px solid var(--c-borda); color: var(--c-fraco); cursor: pointer; font: 700 11px var(--f-mono); padding: 4px 8px; }
+.lista-zonas button { background: none; border: 1px solid var(--c-borda); color: var(--c-fraco); cursor: pointer; font: 700 11px var(--f-mono); padding: 4px 8px; min-height: 28px; min-width: 28px; } /* WCAG 2.5.8: alvo ≥ 24 px */
+.boot-log:focus-visible, .agente-log:focus-visible { outline: 2px solid var(--c-info); outline-offset: 2px; }
+#hud:focus-visible { outline: 2px dashed var(--c-info); outline-offset: -4px; }
 
 /* ── rodapé ── */
 #rodape {
