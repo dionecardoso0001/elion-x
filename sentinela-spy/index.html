@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- CSP também na página: em hospedagem estática (GitHub Pages) não há cabeçalho
+     HTTP. Script só da própria origem (sem inline); conexões só para a própria
+     plataforma, a API da Anthropic (modo chave própria) e as contingências do
+     runtime e dos modelos. Um script injetado não consegue mandar quadro de
+     câmera para outro lugar. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; connect-src 'self' https://api.anthropic.com https://storage.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; media-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Sentinela Spy</title>
+<meta name="description" content="Sentinela Spy — plataforma de visão computacional com agente de IA que interpreta anomalias: vigilância (intrusão, abandono, queda, comportamento atípico), fadiga e mal-estar do motorista e risco de colisão no trânsito. Percepção no próprio aparelho.">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#020604">
+<meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sentinela Spy">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icones/icone.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icones/icone-192.png">
+<!-- fontes da própria origem (OFL-1.1): sem CSS de terceiro bloqueando a pintura e
+     funcionando offline. Pré-carga + font-display:optional = zero pulo de layout. -->
+<link rel="preload" href="fontes/share-tech-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fontes/orbitron-latin-900-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fontes/orbitron-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fontes/rajdhani-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fontes/rajdhani-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fontes/rajdhani-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/spy.css">
+</head>
+<body data-modo="sentinela" data-nivel="5">
+
+<div class="fx fx-grade" aria-hidden="true"></div>
+<div class="fx fx-ruido" aria-hidden="true"></div>
+<div class="fx fx-scan" aria-hidden="true"></div>
+<div class="fx fx-vinheta" aria-hidden="true"></div>
+<div id="flash" aria-hidden="true"></div>
+
+<!-- ▓▓ BOOT ▓▓ -->
+<section id="boot" role="dialog" aria-modal="true" aria-labelledby="bootTitulo">
+  <div class="boot-caixa">
+    <div class="boot-carimbo" aria-hidden="true">CONFIDENCIAL</div>
+    <pre class="boot-arte" aria-hidden="true">
+ ███████╗███████╗███╗   ██╗████████╗██╗███╗   ██╗███████╗██╗      █████╗
+ ██╔════╝██╔════╝████╗  ██║╚══██╔══╝██║████╗  ██║██╔════╝██║     ██╔══██╗
+ ███████╗█████╗  ██╔██╗ ██║   ██║   ██║██╔██╗ ██║█████╗  ██║     ███████║
+ ╚════██║██╔══╝  ██║╚██╗██║   ██║   ██║██║╚██╗██║██╔══╝  ██║     ██╔══██║
+ ███████║███████╗██║ ╚████║   ██║   ██║██║ ╚████║███████╗███████╗██║  ██║
+ ╚══════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝╚═╝  ╚═╝</pre>
+    <div class="boot-carimbo boot-spy" aria-hidden="true">SPY</div>
+    <h1 id="bootTitulo">SENTINELA <b>SPY</b> <span>// inteligência de vídeo com agente de IA</span></h1>
+    <p class="boot-sub">Agente <b>SENTINELA SPY</b> · percepção em tempo real no aparelho · interpretação de anomalias por IA</p>
+
+    <ol id="bootLog" class="boot-log" aria-live="polite" aria-label="Registro de inicialização" tabindex="0"></ol>
+    <div class="boot-barra" role="progressbar" aria-label="Carga do núcleo" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bootBarra"><i id="bootFill"></i></div>
+
+    <fieldset class="boot-modos">
+      <legend>Missão inicial</legend>
+      <label><input type="radio" name="modoInicial" value="sentinela" checked><span><b>◉ SENTINELA</b><small>vigilância · objetos · área restrita · abandono</small></span></label>
+      <label><input type="radio" name="modoInicial" value="motorista"><span><b>◉ MOTORISTA</b><small>fadiga · microssono · mal-estar · alarme e voz</small></span></label>
+      <label><input type="radio" name="modoInicial" value="transito"><span><b>◉ TRÂNSITO</b><small>colisão · pedestre · obstáculo · distância</small></span></label>
+    </fieldset>
+
+    <p id="bootErro" class="boot-erro" role="alert" hidden></p>
+    <button id="bootGo" class="btn-primario" disabled>◤ INICIAR OPERAÇÃO ◢</button>
+    <p class="boot-aviso">A percepção e os alarmes rodam neste aparelho, sem rede. O agente de IA recebe um quadro só quando interpreta um evento ou quando você pede — e o envio de imagens pode ser desligado nas configurações do agente.</p>
+  </div>
+</section>
+
+<!-- ▓▓ TOPO ▓▓ -->
+<header id="topo">
+  <div class="marca">
+    <span class="marca-nucleo" aria-hidden="true"><i></i></span>
+    <span class="marca-txt">SENTINELA <b>SPY</b> <em>// inteligência de vídeo</em><small id="opCodigo">OPERAÇÃO —</small></span>
+  </div>
+  <nav class="modos" role="tablist" aria-label="Modo de operação">
+    <button role="tab" class="modo-tab" data-modo="sentinela" aria-selected="true">SENTINELA</button>
+    <button role="tab" class="modo-tab" data-modo="motorista" aria-selected="false">MOTORISTA</button>
+    <button role="tab" class="modo-tab" data-modo="transito" aria-selected="false">TRÂNSITO</button>
+  </nav>
+  <div class="defcon" id="defcon" data-lv="5" aria-live="polite">
+    <span class="dc-rot">AMEAÇA</span>
+    <span class="dc-degraus" aria-hidden="true"><i data-l="5"></i><i data-l="4"></i><i data-l="3"></i><i data-l="2"></i><i data-l="1"></i></span>
+    <b id="defconVal">5</b><span id="defconTxt">NOMINAL</span>
+  </div>
+  <div class="relogio"><span id="clk">--:--:--</span><small id="clkUtc">UTC --:--</small></div>
+</header>
+
+<!-- ▓▓ GRADE ▓▓ -->
+<main id="grade">
+  <h1 class="sr-only">Sentinela Spy — console de visão computacional com agente de IA</h1>
+
+  <aside class="col" id="colEsq" aria-label="Controles">
+    <section class="painel">
+      <h2>◈ SENSOR ÓPTICO</h2>
+      <label class="campo">Câmera<select id="selCamera"><option value="">padrão do modo</option></select></label>
+      <div class="linha-btns">
+        <button id="btnTrocarCam" class="btn">⇄ FRONTAL/TRASEIRA</button>
+        <button id="btnEspelhar" class="btn" aria-pressed="false">⇋ ESPELHAR</button>
+        <button id="btnNV" class="btn" aria-pressed="false" title="filtro de visão noturna — só na exibição; a IA vê a imagem original">◐ FILTRO NV</button>
+      </div>
+    </section>
+
+    <section class="painel">
+      <h2>◈ OPERAÇÃO</h2>
+      <div class="linha-btns">
+        <button id="btnPausar" class="btn" aria-pressed="false">❚❚ PAUSAR</button>
+        <button id="btnFoto" class="btn">⌖ CAPTURA</button>
+        <button id="btnGravar" class="btn" aria-pressed="false">● GRAVAR</button>
+        <button id="btnTelaCheia" class="btn">⛶ TELA CHEIA</button>
+        <button id="btnDiscreto" class="btn" aria-pressed="false" title="escurece a tela para não distrair quem dirige; alertas continuam">◑ DISCRETO</button>
+      </div>
+    </section>
+
+    <section class="painel">
+      <h2>◈ ALARME</h2>
+      <div class="linha-btns">
+        <button id="btnSilenciar" class="btn btn-aviso">🔇 SILENCIAR 30 s</button>
+        <button id="btnVoz" class="btn" aria-pressed="true">🗣 VOZ LIGADA</button>
+        <button id="btnTestarSirene" class="btn">◎ TESTAR SIRENE</button>
+      </div>
+      <label class="campo">Volume da sirene <output id="outVolume">90%</output><input id="rngVolume" type="range" min="0" max="100" value="90"></label>
+    </section>
+
+    <section class="painel modo-so" data-so="sentinela" id="ctlSentinela">
+      <h2>◈ PERÍMETROS</h2>
+      <div class="linha-btns">
+        <button id="btnZona" class="btn">✎ DESENHAR ZONA</button>
+        <label class="campo campo-inline">tipo
+          <select id="selTipoZona"><option value="restrita">restrita (intrusão)</option><option value="monitorada">monitorada (permanência)</option></select>
+        </label>
+      </div>
+      <div class="linha-btns" id="edicaoZona" hidden>
+        <button id="btnFecharZona" class="btn btn-ok">✔ FECHAR ZONA</button>
+        <button id="btnCancelarZona" class="btn">✕ CANCELAR</button>
+      </div>
+      <p class="dica" id="dicaZona" hidden>Toque ou clique nos cantos da área sobre o vídeo (mínimo 3). Pelo teclado: <b>setas</b> movem o cursor, <b>Espaço</b> marca o vértice, <b>Enter</b> fecha, <b>Esc</b> cancela.</p>
+      <ul id="listaZonas" class="lista-zonas" aria-label="Zonas definidas"></ul>
+      <label class="chk"><input type="checkbox" id="chkPoses" checked> esqueletos (pose)</label>
+      <label class="chk"><input type="checkbox" id="chkCalor"> mapa de calor da normalidade</label>
+      <label class="chk"><input type="checkbox" id="chkDemo"> <span>PRESET DEMONSTRAÇÃO <small>(abandono 8 s, permanência 12 s)</small></span></label>
+    </section>
+
+    <section class="painel modo-so" data-so="motorista" id="ctlMotorista" hidden>
+      <h2>◈ CONDUTOR</h2>
+      <div class="linha-btns">
+        <button id="btnRecalibrar" class="btn">⟲ RECALIBRAR</button>
+        <a id="lnkSamu" class="btn btn-critico" href="tel:192">✚ LIGAR SAMU 192</a>
+      </div>
+      <label class="chk"><input type="checkbox" id="chkGPSmov" checked> <span>com GPS, só alarmar com o veículo em movimento</span></label>
+      <p class="dica">Fixe o celular num suporte, câmera frontal voltada para o rosto, sem cobrir a visão da via. Configure com o veículo parado — <b>não manuseie o aparelho em movimento</b> (CTB, art. 252).</p>
+    </section>
+
+    <section class="painel modo-so" data-so="transito" id="ctlTransito" hidden>
+      <h2>◈ CORREDOR</h2>
+      <label class="campo">Horizonte <output id="outHorizonte"></output><input id="rngHorizonte" type="range" min="30" max="80" value="55"></label>
+      <label class="campo">Largura no horizonte <output id="outLargTopo"></output><input id="rngLargTopo" type="range" min="4" max="50" value="16"></label>
+      <label class="campo">Largura na base <output id="outLargBase"></output><input id="rngLargBase" type="range" min="40" max="100" value="92"></label>
+      <label class="campo">Campo de visão da câmera <output id="outFov"></output><input id="rngFov" type="range" min="40" max="120" value="70"></label>
+      <p class="dica">Celular no para-brisa, câmera traseira para a via. Alinhe o trapézio à sua faixa. Distâncias são estimativas monoculares (~).</p>
+    </section>
+
+    <section class="painel" id="ctlCampo">
+      <h2>◈ CALIBRAÇÃO DE CAMPO <span id="campoSelo" class="selo">PARADA</span></h2>
+      <label class="campo">Perfil de sensibilidade
+        <select id="selPerfil">
+          <option value="conservador">conservador — menos alarme falso</option>
+          <option value="padrao">padrão</option>
+          <option value="sensivel">sensível — menos evento perdido</option>
+        </select>
+      </label>
+      <div class="linha-btns"><button id="btnCampo" class="btn" aria-pressed="false">◉ INICIAR GRAVAÇÃO DE CAMPO</button></div>
+      <div class="anotacoes" id="anotacoes" role="group" aria-label="Anotar o que aconteceu" hidden>
+        <button class="btn btn-ok" data-rotulo="verdadeiro">✔ ALERTA CORRETO <kbd>V</kbd></button>
+        <button class="btn btn-critico" data-rotulo="falso_alarme">✖ FALSO ALARME <kbd>F</kbd></button>
+        <button class="btn btn-aviso" data-rotulo="perdeu">⚠ EVENTO PERDIDO <kbd>P</kbd></button>
+        <button class="btn" data-rotulo="marca">⌖ MARCA <small>teste dirigido</small> <kbd>M</kbd></button>
+      </div>
+      <p class="dica" id="campoInfo">Grava só números derivados — nenhuma imagem. Analise com <b>npm run avaliar</b>. No carro, quem anota é o passageiro.</p>
+    </section>
+
+    <section class="painel">
+      <h2>◈ REGISTRO</h2>
+      <div class="linha-btns">
+        <button id="btnExportar" class="btn">⇩ EXPORTAR LOG</button>
+        <button id="btnLimpar" class="btn">⌫ LIMPAR</button>
+      </div>
+    </section>
+  </aside>
+
+  <section id="palco" aria-label="Visor tático">
+    <div id="visor">
+      <video id="video" playsinline muted autoplay aria-label="Imagem da câmera"></video>
+      <canvas id="hud" aria-hidden="true"></canvas>
+      <div id="banner" class="banner" role="status" hidden><b id="bannerTitulo"></b><span id="bannerDetalhe"></span></div>
+      <div id="sobreposicao" class="sobreposicao" hidden><div class="sob-caixa"><b id="sobTitulo">CARREGANDO</b><span id="sobTexto"></span><div class="boot-barra"><i id="sobFill"></i></div></div></div>
+      <button id="btnEstouBem" class="btn-estou-bem" hidden>ESTOU BEM — SILENCIAR</button>
+    </div>
+    <div id="ativas" class="ativas" role="group" aria-label="Alertas ativos"></div>
+    <div id="ticker" class="ticker" aria-hidden="true"></div>
+    <nav id="abas" class="abas" aria-label="Painéis">
+      <button data-aba="colDir" aria-pressed="true">◈ AGENTE &amp; TELEMETRIA</button>
+      <button data-aba="colEsq" aria-pressed="false">◈ CONTROLES</button>
+    </nav>
+  </section>
+
+  <aside class="col" id="colDir" aria-label="Agente e telemetria">
+    <section class="painel painel-agente">
+      <h2>◈ AGENTE SENTINELA SPY <span id="agenteStatus" class="selo">…</span></h2>
+      <ol id="agenteLog" class="agente-log" aria-label="Registro do agente" tabindex="0"></ol>
+      <form id="formChat" class="chat" autocomplete="off">
+        <label class="sr-only" for="txtPergunta">Pergunta ao agente</label>
+        <input id="txtPergunta" type="text" maxlength="2000" enterkeyhint="send" placeholder="Pergunte: o que aconteceu nos últimos 10 min?">
+        <button id="btnPerguntar" class="btn btn-primario-sm" type="submit">ENVIAR</button>
+      </form>
+      <div class="linha-btns">
+        <button id="btnInterpretar" class="btn btn-primario-sm" type="button">◈ INTERPRETAR AGORA</button>
+        <button id="btnRelatorio" class="btn" type="button">▤ RELATÓRIO</button>
+        <button id="btnNovaConversa" class="btn" type="button">↺ NOVA CONVERSA</button>
+        <button id="btnConfigAgente" class="btn" type="button">⚙ CONFIGURAR</button>
+        <button id="btnTestarAgente" class="btn" type="button" title="chamada mínima e real à API: confere chave, modelo e custo">◎ TESTAR AGENTE</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="chkAutoAnalise" checked> <span>interpretar sozinho em evento crítico <small>(≥ 45 s entre consultas · até 30 por hora)</small></span></label>
+      <label class="chk"><input type="checkbox" id="chkFalarResposta"> <span>ler as respostas do agente em voz alta</span></label>
+      <p class="custo" id="agenteCusto">0 consulta(s)</p>
+      <div id="analiseCard" class="analise" hidden></div>
+    </section>
+    <section class="painel">
+      <h2>◈ REGISTRO DE INCIDENTES</h2>
+      <p class="dica" id="incResumo"></p>
+      <ol id="listaIncidentes" class="lista-incidentes" aria-label="Incidentes mais recentes" tabindex="0"></ol>
+      <div class="linha-btns">
+        <button id="btnExportarInc" class="btn" type="button">⇩ EXPORTAR JSON</button>
+        <button id="btnLimparInc" class="btn" type="button">✕ LIMPAR REGISTRO</button>
+      </div>
+    </section>
+    <section class="painel">
+      <h2>◈ TELEMETRIA <span id="telModo" class="selo"></span></h2>
+      <dl id="telemetria" class="telemetria"></dl>
+    </section>
+  </aside>
+</main>
+
+
+<footer id="rodape">
+  <span>FPS <b id="rFps">--</b></span>
+  <span>INF <b id="rInf">--</b></span>
+  <span>DELEGADO <b id="rBackend">--</b></span>
+  <span>RUNTIME <b id="rRuntime">--</b></span>
+  <span>GPS <b id="rGps">--</b></span>
+  <span class="priv">🔒 percepção no aparelho · agente de IA sob demanda</span>
+</footer>
+
+<!-- ▓▓ CONFIGURAÇÕES DO AGENTE ▓▓ -->
+<dialog id="dlgAgente" aria-labelledby="dlgAgenteTitulo">
+  <form id="formAgente" class="dlg">
+    <h2 id="dlgAgenteTitulo">◈ AGENTE SENTINELA SPY</h2>
+    <fieldset>
+      <legend>Onde o agente roda</legend>
+      <label class="op"><input type="radio" name="modoAgente" value="servidor" id="optServidor"> <span><b>Servidor desta instalação</b><small id="infoServidor"></small><small>a chave fica no servidor (.env); o navegador nunca a vê</small></span></label>
+      <label class="op"><input type="radio" name="modoAgente" value="navegador" id="optNavegador"> <span><b>Chave própria neste aparelho</b><small>a chave vai só para api.anthropic.com, pelo SDK oficial</small></span></label>
+    </fieldset>
+    <label class="campo" for="inpChave">Chave da API da Anthropic</label>
+    <input id="inpChave" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…">
+    <label class="chk"><input type="checkbox" id="chkLembrarChave"> <span>lembrar neste aparelho <small>(sem marcar, a chave some ao fechar a aba)</small></span></label>
+    <label class="chk"><input type="checkbox" id="chkApagarChave"> <span>apagar a chave salva</span></label>
+    <p class="dica">Use uma chave com limite de gasto definido no Console da Anthropic (Settings → Limits). Quem tiver este aparelho desbloqueado pode usar uma chave lembrada.</p>
+    <label class="campo" for="inpToken">Token de acesso ao servidor <small>(só se o servidor exigir — SPY_TOKEN)</small></label>
+    <input id="inpToken" type="password" autocomplete="off" spellcheck="false">
+    <label class="chk"><input type="checkbox" id="chkImagens" checked> <span>enviar o quadro da câmera ao agente <small>(desligado, ele interpreta só a telemetria)</small></span></label>
+    <label class="campo">Relatório automático do agente
+      <select id="selRelatorio">
+        <option value="0">desligado</option><option value="5">a cada 5 min</option><option value="10">a cada 10 min</option>
+        <option value="15">a cada 15 min</option><option value="30">a cada 30 min</option>
+      </select>
+    </label>
+    <p id="cfgErro" class="boot-erro" role="alert" hidden></p>
+    <div class="linha-btns">
+      <button type="submit" class="btn btn-primario-sm">✔ SALVAR</button>
+      <button type="button" class="btn" id="btnCancelarAgente">✕ CANCELAR</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="srAlerta" class="sr-only" aria-live="assertive"></div>
+<div id="srInfo" class="sr-only" aria-live="polite"></div>
+
+<script type="module" src="js/nucleo.js"></script>
+<script type="module" src="js/inicio.js"></script>
+</body>
+</html>

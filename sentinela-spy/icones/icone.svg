@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Sentinela Spy">
+  <rect width="512" height="512" fill="#020604"/>
+  <g fill="none" stroke="#39ff8b" stroke-width="14">
+    <circle cx="256" cy="256" r="176" opacity=".35"/>
+    <path d="M256 60v70M256 382v70M60 256h70M382 256h70" stroke-linecap="square"/>
+    <path d="M96 256c40-70 96-106 160-106s120 36 160 106c-40 70-96 106-160 106S136 326 96 256z"/>
+  </g>
+  <circle cx="256" cy="256" r="58" fill="#00e5ff"/>
+  <circle cx="256" cy="256" r="24" fill="#020604"/>
+  <circle cx="276" cy="236" r="9" fill="#d7ffe9"/>
+</svg>
