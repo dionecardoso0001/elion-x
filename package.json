@@ -9,7 +9,8 @@
     "start": "node server.js",
     "dev": "node server.js",
     "test": "node --test",
-    "sentinela:modelos": "node scripts/sentinela-modelos.mjs"
+    "sentinela:modelos": "node scripts/sentinela-modelos.mjs",
+    "sentinela:avaliar": "node scripts/sentinela-avaliar.mjs"
   },
   "engines": {
     "node": ">=20.0.0"

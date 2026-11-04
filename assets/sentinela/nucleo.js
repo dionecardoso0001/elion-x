@@ -10,7 +10,8 @@
      MOTORISTA  rosto a cada quadro · objetos 2 Hz (só para flagrar celular)
      TRÂNSITO   objetos ~22 Hz
    ═══════════════════════════════════════════════════════════════════════ */
-import { LIMIARES, MODELOS, MODELOS_POR_MODO, PRESET_DEMO, VERSAO, rotulo } from './config.js';
+import { LIMIARES, MODELOS, MODELOS_POR_MODO, VERSAO, rotulo, limiaresEfetivos, NOMES_PERFIL } from './config.js';
+import { GravadorCampo, ROTULOS_ANOTACAO } from './gravador.js';
 import { Rastreador } from './rastreador.js';
 import { AnalisadorMotorista, celularJuntoAoRosto } from './motorista.js';
 import { AnalisadorTransito } from './transito.js';
@@ -37,6 +38,7 @@ const lerCfg = () => { try { return JSON.parse(localStorage.getItem(CHAVE_CFG)) 
 const cfg = Object.assign({
   modo: 'sentinela', zonas: [], roi: { ...LIMIARES.transito.roi }, fov: LIMIARES.transito.fovHorizontalGraus,
   volume: 0.9, voz: true, poses: true, calor: false, demo: false, gpsMov: true, espelhar: null, nv: false, cameras: {},
+  perfil: 'padrao',
 }, lerCfg());
 const salvarCfg = () => { try { localStorage.setItem(CHAVE_CFG, JSON.stringify(cfg)); } catch { /* modo privado */ } };
 
@@ -56,6 +58,7 @@ const E = {
   gps: { velocidade: null, precisao: null, em: null, watch: null, erro: null },
   zonaEdicao: null, gravador: null, composicao: null, evidencias: 0, analisando: false,
   logGrupo: new Map(),
+  campo: new GravadorCampo(),   // gravador de CAMPO (métricas para calibração) — não confundir com o de vídeo
 };
 
 /* ═════════════════ BOOT ═════════════════ */
@@ -213,7 +216,7 @@ async function iniciarOperacao(modo) {
   E.hud = new HUD($('hud'), $('video'));
   aplicarModoUI(modo);
   await abrir(modo);
-  aplicarDemo();
+  aplicarPerfil();
   E.sirene.manterTelaLigada();
   if (modo !== 'sentinela') iniciarGPS();
   E.rodando = true;
@@ -239,6 +242,11 @@ function reiniciarAnalise() {
 
 async function trocarModo(novo) {
   if (novo === E.modo || !E.rodando) return;
+  if (E.campo.ativo) {   // uma gravação = uma missão e um conjunto de limiares, senão a análise mistura tudo
+    logAgente({ nivel: 'aviso', texto: 'Encerre a gravação de campo antes de trocar de missão.' });
+    document.querySelectorAll('.modo-tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.modo === E.modo)));
+    return;
+  }
   cfg.modo = novo; salvarCfg();
   aplicarModoUI(novo);
   reiniciarAnalise();
@@ -309,16 +317,23 @@ function processar(v, t) {
   while (E.quadrosEm.length && t - E.quadrosEm[0] > 1000) E.quadrosEm.shift();
   E.fps = E.quadrosEm.length;
   E.saida = saida;
+  if (E.campo.ativo) {
+    E.campo.amostra(t, saida.metricas);
+    if (E.campo.cheio) { logAgente({ nivel: 'aviso', texto: '◈ Gravação de campo atingiu o teto de linhas — encerrada e baixada.' }); encerrarCampo(t); }
+  }
   tratarAlertas(saida, t);
 }
 
 /* ═════════════════ ALERTAS ═════════════════ */
 function tratarAlertas(saida, t) {
   for (const e of saida.eventos) {
+    E.campo.evento(t, e);   // o gravador quer o evento BRUTO, antes da supressão de repetição
     const reg = E.alertas.evento(e, t);
     if (reg) logAgente(narrar(reg), reg.nivel === 'aviso' ? evidencia() : null);
   }
   const { novas, escaladas, encerradas } = E.alertas.sincronizar(saida.condicoes, t);
+  for (const c of [...novas, ...escaladas]) E.campo.condicao(t, c, 'inicio');
+  for (const c of encerradas) E.campo.condicao(t, c, 'fim');
   for (const c of [...novas, ...escaladas]) {
     // quatro animais na pista são UMA ameaça para quem dirige: o registro do
     // gestor guarda cada alvo, mas a tela narra o grupo uma vez a cada 5 s
@@ -351,7 +366,7 @@ function desenhar(t) {
   const s = E.saida || {};
   const nivel = E.alertas.nivelAtual();
   E.hud.desenhar({
-    modo: E.modo, agora: t, nivel, fps: E.fps, infMs: E.infMs, gravando: !!E.gravador,
+    modo: E.modo, agora: t, nivel, fps: E.fps, infMs: E.infMs, gravando: !!E.gravador, campo: E.campo.ativo,
     trilhas: E.modo === 'motorista' ? [] : E.trilhas,
     sentinela: E.modo === 'sentinela' ? {
       zonas: cfg.zonas, zonaEdicao: E.zonaEdicao, poses: E.poses, mostrarPoses: cfg.poses,
@@ -536,7 +551,12 @@ function atualizarPaineis(t) {
     add('esqueletos', `${m.poses ?? 0}`);
     const n = m.normalidade;
     add('modelo de normalidade', n ? (n.aquecido ? 'ATIVO' : `aprendendo ${Math.min(100, Math.round((100 * n.amostras) / n.alvo))}%`) : '—', '', true);
-    if (E.vigilancia.cfg.abandonoS !== LIMIARES.vigilancia.abandonoS) add('preset', 'DEMONSTRAÇÃO — tempos encurtados', 'aviso', true);
+    if (cfg.demo) add('preset', 'DEMONSTRAÇÃO — tempos encurtados', 'aviso', true);
+  }
+  add('perfil de sensibilidade', NOMES_PERFIL[cfg.perfil] || 'PADRÃO', cfg.perfil === 'padrao' ? '' : 'aviso', true);
+  if (E.campo.ativo) {
+    const s = Math.floor(E.campo.duracaoMs(t) / 1000), c = E.campo.contagem;
+    add('gravação de campo', `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')} · ${c.amostras} amostras · ${c.condicoes} alerta(s) · ${c.anotacoes} anotação(ões)`, 'aviso', true);
   }
   $('telemetria').replaceChildren(...linhas.map(l => {
     const div = document.createElement('div'); if (l.largo) div.className = 'largo';
@@ -729,7 +749,7 @@ function ligarControles() {
   };
   chk('chkPoses', 'poses');
   chk('chkCalor', 'calor');
-  chk('chkDemo', 'demo', aplicarDemo);
+  chk('chkDemo', 'demo', aplicarPerfil);
   chk('chkGPSmov', 'gpsMov');
   renderZonas();
 
@@ -762,13 +782,70 @@ function ligarControles() {
     if (ev.key === 'Escape' && E.zonaEdicao) cancelarZona();
     if (ev.key === 'Enter' && E.zonaEdicao) fecharZona();
     if (ev.key.toLowerCase() === 's' && E.rodando) $('btnSilenciar').click();
+    const atalho = { v: 'verdadeiro', f: 'falso_alarme', p: 'perdeu', m: 'marca' }[ev.key.toLowerCase()];
+    if (atalho && E.campo.ativo) anotar(atalho);
   });
+
+  // ── calibração de campo ──
+  const selPerfil = $('selPerfil');
+  selPerfil.value = cfg.perfil in NOMES_PERFIL ? cfg.perfil : 'padrao';
+  selPerfil.addEventListener('change', () => {
+    cfg.perfil = selPerfil.value; salvarCfg(); aplicarPerfil();
+    logAgente({ nivel: 'sistema', texto: `◈ Perfil de sensibilidade: ${NOMES_PERFIL[cfg.perfil]}` });
+  });
+  $('btnCampo').addEventListener('click', () => (E.campo.ativo ? encerrarCampo(agora()) : iniciarCampo(agora())));
+  document.querySelectorAll('#anotacoes [data-rotulo]').forEach(b => b.addEventListener('click', () => anotar(b.dataset.rotulo)));
 }
 
-function aplicarDemo() {
-  const padrao = LIMIARES.vigilancia;
-  E.vigilancia.ajustar(cfg.demo ? PRESET_DEMO.vigilancia
-    : { abandonoS: padrao.abandonoS, permanenciaS: padrao.permanenciaS, remocaoEstaticoMinS: padrao.remocaoEstaticoMinS });
+/** Perfil de sensibilidade + preset de demonstração → limiares efetivos dos três analisadores. */
+function aplicarPerfil() {
+  E.motorista.ajustar(limiaresEfetivos('motorista', cfg.perfil));
+  E.transito.ajustar(limiaresEfetivos('transito', cfg.perfil));
+  E.vigilancia.ajustar(limiaresEfetivos('sentinela', cfg.perfil, { demo: cfg.demo }));
+}
+
+function iniciarCampo(t) {
+  if (!E.rodando) { logAgente({ nivel: 'aviso', texto: 'Inicie a operação antes de gravar uma sessão de campo.' }); return; }
+  const v = $('video');
+  E.campo.iniciar({
+    t, modo: E.modo, perfil: cfg.perfil, demo: E.modo === 'sentinela' && cfg.demo,
+    limiares: limiaresEfetivos(E.modo, cfg.perfil, { demo: cfg.demo }),
+    dispositivo: { navegador: navigator.userAgent.slice(0, 140), quadro: `${v.videoWidth}x${v.videoHeight}`,
+      delegado: E.percepcao?.backend, runtime: E.percepcao?.fonte, fps: E.fps },
+  });
+  // alerta que JÁ está soando entra no instante zero: começar a gravar no meio de um alarme
+  // é justamente o caso que o operador quer rotular (falha real vista no teste E2E)
+  for (const c of E.alertas.listaAtivas()) E.campo.condicao(t, c, 'inicio', { pre_existente: true });
+  estadoCampo(true);
+  logAgente({ nivel: 'sistema', texto: `◈ GRAVAÇÃO DE CAMPO iniciada — missão ${NOME_MODO[E.modo].toUpperCase()}, perfil ${NOMES_PERFIL[cfg.perfil]}. Anote: V correto · F falso · P perdido · M marca.` });
+}
+
+function encerrarCampo(t) {
+  const texto = E.campo.parar(t);
+  estadoCampo(false);
+  if (!texto) return;
+  const c = E.campo.contagem;
+  baixar(new Blob([texto], { type: 'application/x-ndjson' }), `sentinela-campo-${E.modo}-${carimbo()}.jsonl`);
+  logAgente({ nivel: 'sistema', texto: `◈ Sessão de campo salva neste aparelho: ${c.amostras} amostras, ${c.condicoes} registro(s) de alerta, ${c.anotacoes} anotação(ões). Analise com npm run sentinela:avaliar.` });
+}
+
+function estadoCampo(ativo) {
+  const b = $('btnCampo');
+  b.setAttribute('aria-pressed', String(ativo));
+  b.textContent = ativo ? '■ ENCERRAR E BAIXAR SESSÃO' : '◉ INICIAR GRAVAÇÃO DE CAMPO';
+  $('anotacoes').hidden = !ativo;
+  $('ctlCampo').classList.toggle('gravando', ativo);
+  $('campoSelo').textContent = ativo ? '● GRAVANDO' : 'PARADA';
+  $('selPerfil').disabled = ativo;   // trocar limiares no meio da sessão invalidaria a análise
+  document.querySelectorAll('.modo-tab').forEach(x => { x.disabled = ativo && x.dataset.modo !== E.modo; });
+}
+
+function anotar(rotulo) {
+  const a = E.campo.anotacao(agora(), rotulo);
+  if (!a) return;
+  E.sirene.vibrar([40]);
+  const vinculo = a.alvo ? ` → ${a.alvo_titulo} (há ${(a.alvo_ha_ms / 1000).toFixed(1)} s)` : '';
+  logAgente({ nivel: 'sistema', texto: `◈ ANOTAÇÃO: ${ROTULOS_ANOTACAO[rotulo]}${vinculo}` });
 }
 
 // ?debug=1 expõe o estado no console do navegador (diagnóstico de campo)

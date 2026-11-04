@@ -183,6 +183,11 @@ export class HUD {
       if (pisca) { g.beginPath(); g.arc(R.x + R.w - 70 * d, R.y + 22 * d, 5 * d, 0, Math.PI * 2); g.fill(); }
       g.fillText('REC', R.x + R.w - 60 * d, R.y + 16 * d);
     }
+    if (e.campo) {   // sessão de calibração: fica gravado no vídeo e na captura também
+      this.#fonte(11, 700); g.textBaseline = 'top'; g.textAlign = 'right'; g.fillStyle = C.aviso;
+      g.fillText('● CAMPO', R.x + R.w - (e.gravando ? 90 : 16) * d, R.y + 16 * d);
+      g.textAlign = 'left';
+    }
   }
 
   /* ─────────── MODO SENTINELA ─────────── */

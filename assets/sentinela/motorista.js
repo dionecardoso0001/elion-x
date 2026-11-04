@@ -124,6 +124,9 @@ export class AnalisadorMotorista {
     this.calib = { amostras: [], desde: null, pronta: false };
   }
 
+  /** Troca de perfil de sensibilidade a quente (não perde calibração nem histórico). */
+  ajustar(cfg) { Object.assign(this.cfg, cfg); }
+
   /**
    * @param {{t:number, rosto:null|{pontos:Array, blend?:Object}, aspecto:number,
    *          celular?:boolean|null, velocidade?:number|null}} e

@@ -94,6 +94,11 @@ export class AnalisadorTransito {
   }
 
   reiniciar() { this.estado.clear(); }
+  /** Troca de perfil: corredor e campo de visão são calibração do operador — ficam. */
+  ajustar(cfg) {
+    const { roi, fovHorizontalGraus } = this.cfg;
+    Object.assign(this.cfg, cfg, { roi, fovHorizontalGraus });
+  }
   definirROI(roi) { this.cfg.roi = { ...this.cfg.roi, ...roi }; }
   definirFOV(fov) { this.cfg.fovHorizontalGraus = fov; }
 

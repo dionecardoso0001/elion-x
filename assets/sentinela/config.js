@@ -213,3 +213,50 @@ export const LIMIARES = {
 export const PRESET_DEMO = {
   vigilancia: { abandonoS: 8, permanenciaS: 12, remocaoEstaticoMinS: 4 },
 };
+
+/* ── Perfis de sensibilidade ──────────────────────────────────────────────
+   Instrumento de CALIBRAÇÃO, não de gosto: o gravador de campo mede alarme
+   falso e evento perdido, e o perfil é a alavanca para ajustar sem editar
+   código. "Conservador" = menos alarme falso; "sensível" = menos evento
+   perdido. Todo perfil é HEURÍSTICA e fica registrado no cabeçalho da
+   gravação, para a análise saber com que limiares cada sessão rodou. */
+export const PERFIS = {
+  conservador: {
+    motorista: { perclosAviso: 0.10, perclosCritico: 0.15, microssonoS: 1.3, distracaoAvisoS: 3.0, distracaoCriticoS: 5.0,
+      bocejosAviso: 4, malSubitoS: 3.5, ausenteS: 4.0, pendendoPitchGraus: 25 },
+    transito: { ttcAvisoS: 3.2, headwayAvisoS: 0.8, pedestreCriticoM: 18 },
+    vigilancia: { intrusaoMinS: 1.5, corridaAlturasS: 2.0, quedaMinS: 2.5, maosAltoS: 3.0, aglomeracao: 8 },
+  },
+  padrao: { motorista: {}, transito: {}, vigilancia: {} },
+  sensivel: {
+    motorista: { perclosAviso: 0.06, perclosCritico: 0.10, microssonoS: 0.8, distracaoAvisoS: 1.5, distracaoCriticoS: 3.0,
+      bocejosAviso: 2, malSubitoS: 2.0, ausenteS: 2.5, pendendoPitchGraus: 15 },
+    transito: { ttcCriticoS: 3.0, ttcAvisoS: 5.0, headwayAvisoS: 1.5, pedestreCriticoM: 30 },
+    vigilancia: { intrusaoMinS: 0.3, corridaAlturasS: 1.3, quedaMinS: 1.0, maosAltoS: 1.5, aglomeracao: 4 },
+  },
+};
+export const NOMES_PERFIL = { conservador: 'CONSERVADOR', padrao: 'PADRÃO', sensivel: 'SENSÍVEL' };
+
+/* Pisos de segurança: nenhum perfil pode empurrar um alarme crítico para
+   depois do que a fonte ou a física sustentam. O crítico de colisão é
+   DERIVADO da NHTSA (2,1 s + 0,5 s de latência) e o microssono não passa
+   de 1,5 s fechado — "conservador" reduz aviso, nunca atrasa o crítico. */
+export const PISOS = {
+  transito: { ttcCriticoS: { min: LIMIARES.transito.ttcCriticoS } },
+  motorista: { microssonoS: { max: 1.5 }, perclosCritico: { max: 0.15 } },
+};
+
+const CHAVE_LIMIAR = { motorista: 'motorista', transito: 'transito', sentinela: 'vigilancia' };
+
+/** Limiares efetivos de um modo = base + perfil (+ preset de demonstração), com os pisos aplicados. */
+export function limiaresEfetivos(modo, perfil = 'padrao', { demo = false } = {}) {
+  const chave = CHAVE_LIMIAR[modo] || modo;
+  const p = PERFIS[perfil] || PERFIS.padrao;
+  const out = { ...LIMIARES[chave], ...(p[chave] || {}) };
+  if (chave === 'vigilancia' && demo) Object.assign(out, PRESET_DEMO.vigilancia);
+  for (const [k, lim] of Object.entries(PISOS[chave] || {})) {
+    if (lim.min != null) out[k] = Math.max(out[k], lim.min);
+    if (lim.max != null) out[k] = Math.min(out[k], lim.max);
+  }
+  return out;
+}

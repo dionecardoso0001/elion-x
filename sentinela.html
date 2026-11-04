@@ -150,6 +150,25 @@
       <p class="dica">Celular no para-brisa, câmera traseira para a via. Alinhe o trapézio à sua faixa. Distâncias são estimativas monoculares (~).</p>
     </section>
 
+    <section class="painel" id="ctlCampo">
+      <h2>◈ CALIBRAÇÃO DE CAMPO <span id="campoSelo" class="selo">PARADA</span></h2>
+      <label class="campo">Perfil de sensibilidade
+        <select id="selPerfil">
+          <option value="conservador">conservador — menos alarme falso</option>
+          <option value="padrao">padrão</option>
+          <option value="sensivel">sensível — menos evento perdido</option>
+        </select>
+      </label>
+      <div class="linha-btns"><button id="btnCampo" class="btn" aria-pressed="false">◉ INICIAR GRAVAÇÃO DE CAMPO</button></div>
+      <div class="anotacoes" id="anotacoes" role="group" aria-label="Anotar o que aconteceu" hidden>
+        <button class="btn btn-ok" data-rotulo="verdadeiro">✔ ALERTA CORRETO <kbd>V</kbd></button>
+        <button class="btn btn-critico" data-rotulo="falso_alarme">✖ FALSO ALARME <kbd>F</kbd></button>
+        <button class="btn btn-aviso" data-rotulo="perdeu">⚠ EVENTO PERDIDO <kbd>P</kbd></button>
+        <button class="btn" data-rotulo="marca">⌖ MARCA <small>teste dirigido</small> <kbd>M</kbd></button>
+      </div>
+      <p class="dica" id="campoInfo">Grava só números derivados — nenhuma imagem. Analise com <b>npm run sentinela:avaliar</b>. No carro, quem anota é o passageiro.</p>
+    </section>
+
     <section class="painel">
       <h2>◈ REGISTRO</h2>
       <div class="linha-btns">
