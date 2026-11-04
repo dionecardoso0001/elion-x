@@ -1,0 +1,24 @@
+# Relé de notificação do Sentinela Spy — Cloudflare Worker.
+#   npx wrangler login
+#   npx wrangler deploy
+# SEGREDOS NUNCA NESTE ARQUIVO — cadastre cada um com:
+#   npx wrangler secret put RELE_TOKENS
+#   npx wrangler secret put WHATSAPP_TOKEN
+#   npx wrangler secret put RESEND_API_KEY        (ou os três GMAIL_*)
+# Passo a passo completo: ../ALERTAS.md
+name = "sentinela-spy-rele"
+main = "worker.mjs"
+compatibility_date = "2025-06-01"
+
+[vars]
+# origem da página que pode chamar este relé (o seu GitHub Pages, sem barra no fim)
+RELE_ORIGENS = "https://dionecardoso0001.github.io"
+RELE_LIMITE_10MIN = "10"
+WHATSAPP_IDIOMA = "pt_BR"
+WHATSAPP_GRAPH_VERSAO = "v24.0"
+# Não-secretos, mas pessoais: preencha aqui ou como secret
+# WHATSAPP_PHONE_ID = ""
+# WHATSAPP_TEMPLATE = "alerta_saude_motorista"
+# WHATSAPP_DESTINOS = "5511999998888"
+# EMAIL_DESTINOS = "chefe@empresa.com"
+# EMAIL_REMETENTE = "Sentinela Spy <alertas@seudominio.com>"
