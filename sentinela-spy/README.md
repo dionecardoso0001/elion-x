@@ -48,6 +48,11 @@ npm start
 No Windows: dois cliques em **`Iniciar Sentinela Spy.bat`** (faz os três passos).
 Para o modo servidor, copie `.env.example` para `.env` e preencha `ANTHROPIC_API_KEY`.
 
+Depois de abrir, clique **◎ TESTAR AGENTE**: é uma chamada mínima e **real** à API, com
+os mesmos recursos das tarefas (modelo, fallback de recusa, saída estruturada). Ela
+mostra o modelo que respondeu, a latência, os tokens e o custo, e confirma a chave antes
+do primeiro evento de verdade.
+
 **No celular** a câmera exige HTTPS: use o endereço do GitHub Pages. Para expor o
 servidor próprio (túnel, VPS), **defina `SPY_TOKEN`**. Sem token, quem alcançar a porta
 gasta o seu crédito da API.
@@ -93,6 +98,10 @@ câmera ─▶ MediaPipe (WASM, no aparelho) ─▶ rastreador multialvo ─▶ 
     respondidas numa única mensagem, e o histórico só cresce (nunca editado). Para limpar,
     abra uma nova conversa.
 - **Disparo automático:** só em evento **crítico**, no máximo 1 a cada 45 s e 30 por hora.
+- **Adaptação a recurso recusado:** se a API recusar um recurso **opcional** nesta
+  conta (o fallback de recusa ou o nível de esforço), o agente avisa na tela, repete o
+  pedido uma vez sem ele e segue assim. Ferramentas e histórico nunca são alterados: uma
+  mudança no meio da conversa invalidaria o pensamento preservado do modelo.
 - **Custo:** o painel mostra a estimativa da sessão, calculada pela tabela de preços do
   Opus 5.5 (US$ 4 por milhão de tokens de entrada, US$ 20 de saída e US$ 0,20 de leitura
   de cache). Uma interpretação típica (quadro de 768 px + telemetria + parecer) fica na
@@ -145,7 +154,7 @@ a latência dos testes dirigidos.
 
 ## Qualidade — o que foi verificado
 
-- **90 testes automatizados** (`npm test`), entre eles:
+- **93 testes automatizados** (`npm test`), entre eles:
   - Núcleo de visão com cenários físicos sintéticos.
   - Cérebro do agente: esquemas dentro das restrições de saída estruturada, laço de
     ferramentas, recusa, fallback e histórico só crescente.
@@ -157,6 +166,8 @@ a latência dos testes dirigidos.
   - Interpretação automática em evento crítico, chat com 3 ferramentas e relatório.
   - Persistência após recarregar.
   - Modo chave própria com o SDK no navegador (cabeçalho de acesso direto conferido).
+  - **TESTAR AGENTE** nos dois modos.
+  - Adaptação quando a API recusa o fallback.
   - **Nenhuma violação de CSP**.
 - **axe-core 4.14, WCAG 2.2 A/AA:** 0 violações no desktop, no celular (Pixel 7) e com o
   diálogo de configuração aberto. Sem rolagem horizontal.

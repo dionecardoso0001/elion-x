@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  MODELO, BETA_FALLBACK, TIPOS, ESQUEMAS, FERRAMENTAS, SISTEMAS, montarPedido, pedidoInterpretacao, pedidoRelatorio,
+  MODELO, BETA_FALLBACK, TIPOS, ESQUEMAS, FERRAMENTAS, SISTEMAS, montarPedido, pedidoInterpretacao, pedidoRelatorio, pedidoDiagnostico, recursoRecusado,
   lerResposta, extrairJSON, normalizarInterpretacao, normalizarRelatorio, custoEstimado, conversar, validarMensagens, criarPolitica,
 } from '../js/spy/cerebro.js';
 
@@ -14,7 +14,7 @@ test('pedido: modelo, fallback de recusa ligado, prompt em cache, sem parâmetro
     assert.equal(BETA_FALLBACK, 'server-side-fallback-2026-07-01', 'a forma "default" exige este cabeçalho exato');
     assert.equal(p.fallbacks, 'default');
     assert.equal(p.system[0].cache_control.type, 'ephemeral');
-    assert.ok(p.max_tokens >= 16000, 'max_tokens baixo corta resposta no meio');
+    assert.ok(p.max_tokens >= (tipo === 'diagnostico' ? 1024 : 16000), 'max_tokens baixo corta resposta no meio');
     for (const proibido of ['temperature', 'top_p', 'top_k', 'thinking', 'tool_choice']) assert.ok(!(proibido in p), `${proibido} não pode ir (400 no Opus 5.5 / API 2026-10-21)`);
   }
   const i = montarPedido('interpretar', []);
@@ -49,9 +49,14 @@ test('esquemas e ferramentas respeitam as restrições de saída estruturada e d
     assert.equal(f.input_schema.additionalProperties, false);
     if (f.strict) conferirEsquema(f.input_schema, f.name);
   }
-  for (const s of Object.values(SISTEMAS)) {
-    assert.match(s, /LGPD/); assert.match(s, /⟦DADO⟧/); assert.match(s, /nunca instruções/);
+  // toda tarefa que recebe dado de fora (câmera, telemetria, incidentes, perguntas) carrega as regras
+  for (const [tipo, s] of Object.entries(SISTEMAS)) {
+    if (tipo === 'diagnostico') continue;
+    assert.match(s, /LGPD/, tipo); assert.match(s, /⟦DADO⟧/, tipo); assert.match(s, /nunca instruções/, tipo);
   }
+  // o diagnóstico é a exceção porque NÃO recebe dado de fora: só um texto fixo da plataforma
+  assert.deepEqual(pedidoDiagnostico(), pedidoDiagnostico());
+  assert.equal(typeof pedidoDiagnostico()[0].content, 'string');
 });
 
 test('pedido de interpretação: imagem opcional e telemetria cercada como DADO', () => {
@@ -175,4 +180,31 @@ test('política automática: só crítico, intervalo mínimo e teto por hora', (
   t = 150000; assert.equal(p.permitir('critico'), false, 'teto de 3 por hora');
   assert.equal(p.naUltimaHora, 3);
   t = 3_700_000; assert.equal(p.permitir('critico'), true, 'a janela de uma hora libera de novo');
+});
+
+test('adaptação: recurso opcional recusado pela API sai do pedido; erro de outra natureza não é tocado', () => {
+  assert.equal(recursoRecusado('fallbacks: Extra inputs are not permitted'), 'fallbacks');
+  assert.equal(recursoRecusado('Unexpected value(s) `server-side-fallback-2026-07-01` for the `anthropic-beta` header'), 'fallbacks');
+  assert.equal(recursoRecusado('output_config.effort: Input should be low, medium or high'), 'esforco');
+  assert.equal(recursoRecusado('messages.0.content: Field required'), null);
+  assert.equal(recursoRecusado(undefined), null);
+  const sem = montarPedido('interpretar', [], { compat: { fallbacks: false } });
+  assert.equal('fallbacks' in sem, false); assert.equal('betas' in sem, false);
+  assert.equal(sem.output_config.format.type, 'json_schema', 'a saída estruturada continua');
+  const semEsforco = montarPedido('interpretar', [], { compat: { esforco: false } });
+  assert.equal('effort' in semEsforco.output_config, false);
+  assert.equal(semEsforco.fallbacks, 'default');
+  const conversa = montarPedido('conversa', [], { compat: { esforco: false } });
+  assert.equal(conversa.output_config, undefined);
+  assert.equal(conversa.tools, FERRAMENTAS, 'ferramentas NUNCA mudam (mudança no meio da conversa invalidaria o pensamento preservado)');
+});
+
+test('diagnóstico: chamada mínima com os mesmos recursos das tarefas reais', () => {
+  const p = montarPedido('diagnostico', pedidoDiagnostico());
+  assert.equal(p.model, 'claude-opus-5-5');
+  assert.equal(p.fallbacks, 'default');
+  assert.equal(p.output_config.format.schema, ESQUEMAS.diagnostico);
+  assert.equal(p.output_config.effort, 'low');
+  assert.equal(p.messages[0].role, 'user');
+  assert.deepEqual(ESQUEMAS.diagnostico.properties.status.enum, ['ok']);
 });

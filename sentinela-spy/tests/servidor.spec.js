@@ -178,3 +178,30 @@ test('peças puras do servidor', () => {
     assert.equal(carregarEnv(path.join(dir, 'nao-existe'), {}), 0);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('adaptação no servidor: API recusa o fallback → repete UMA vez sem ele, avisa e lembra', async t => {
+  const recebidos = [];
+  let chamadas = 0;
+  const erro400 = msg => Object.assign(Object.create(Anthropic.BadRequestError.prototype), { status: 400, message: msg });
+  const falso = { beta: { messages: { create: async p => {
+    recebidos.push(p); chamadas++;
+    if (chamadas === 1) throw erro400('fallbacks: Extra inputs are not permitted');
+    if (p.messages[0].content === 'quebrado') throw erro400('messages.0.content: Field required');
+    return { id: 'm', model: MODELO, stop_reason: 'end_turn', content: [{ type: 'text', text: '{"status":"ok","mensagem":"pronto"}' }], usage: {} };
+  } } } };
+  const s = await subir(criarServidor({ env: { SPY_LIMITE_MIN: '50' }, cliente: falso }));
+  t.after(s.fechar);
+  const diag = { tipo: 'diagnostico', messages: [{ role: 'user', content: 'teste' }] };
+  const r1 = await s.pedir('/api/spy/mensagens', POST(diag));
+  assert.equal(r1.status, 200);
+  assert.deepEqual(JSON.parse(r1.corpo)._ajustes, ['fallbacks'], 'a interface fica sabendo');
+  assert.equal(recebidos[0].fallbacks, 'default');
+  assert.equal('fallbacks' in recebidos[1], false); assert.equal('betas' in recebidos[1], false);
+  const r2 = await s.pedir('/api/spy/mensagens', POST(diag));
+  assert.equal(JSON.parse(r2.corpo)._ajustes, undefined, 'na próxima já vai sem, sem nova tentativa');
+  assert.equal(recebidos.length, 3);
+  assert.deepEqual(JSON.parse((await s.pedir('/api/spy/estado')).corpo).recursos_desligados, ['fallbacks']);
+  const r3 = await s.pedir('/api/spy/mensagens', POST({ tipo: 'conversa', messages: [{ role: 'user', content: 'quebrado' }] }));
+  assert.equal(r3.status, 502, '400 de outra natureza não é repetido');
+  assert.equal(recebidos.length, 4);
+});

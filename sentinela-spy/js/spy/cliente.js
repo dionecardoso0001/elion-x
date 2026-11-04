@@ -11,7 +11,7 @@
                  PRÓPRIA chave; ela vai só para api.anthropic.com. Por padrão
                  fica só na memória desta aba; "lembrar" grava neste aparelho.
    ═══════════════════════════════════════════════════════════════════════ */
-import { montarPedido } from './cerebro.js';
+import { montarPedido, recursoRecusado } from './cerebro.js';
 
 /** O servidor desta instalação oferece o agente? (404 em hospedagem estática) */
 export async function detectarServidor(base = 'api/spy/') {
@@ -29,6 +29,8 @@ export class ClienteAgente {
   constructor({ modo = 'navegador', chave = '', token = '', base = 'api/spy/' } = {}) {
     this.modo = modo; this.chave = chave; this.token = token; this.base = base;
     this.sdk = null; this.Anthropic = null;
+    this.compat = {};               // recursos opcionais que a API recusou nesta conta
+    this.aoAjuste = () => {};       // avisa a interface quando o pedido se adapta
   }
 
   get pronto() { return this.modo === 'servidor' || !!this.chave; }
@@ -62,10 +64,19 @@ export class ClienteAgente {
       // dangerouslyAllowBrowser: a chave é do próprio operador, no aparelho dele (ver README → Segurança)
       this.sdk = new this.Anthropic({ apiKey: this.chave, dangerouslyAllowBrowser: true, maxRetries: 2, timeout: 120_000 });
     }
-    try {
-      return await this.sdk.beta.messages.create(montarPedido(tipo, messages), { signal });
-    } catch (e) {
-      throw traduzirErro(e, this.Anthropic);
+    // recurso opcional recusado (400): adapta UMA vez por recurso e repete
+    for (;;) {
+      try {
+        return await this.sdk.beta.messages.create(montarPedido(tipo, messages, { compat: this.compat }), { signal });
+      } catch (e) {
+        const recurso = e instanceof this.Anthropic.BadRequestError ? recursoRecusado(e.message) : null;
+        if (recurso && this.compat[recurso] !== false && !signal?.aborted) {
+          this.compat[recurso] = false;
+          this.aoAjuste(recurso, e.message);
+          continue;
+        }
+        throw traduzirErro(e, this.Anthropic);
+      }
     }
   }
 }

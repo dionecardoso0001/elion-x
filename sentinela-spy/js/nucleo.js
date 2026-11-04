@@ -18,8 +18,8 @@ import { AnalisadorTransito } from './transito.js';
 import { AnalisadorVigilancia } from './vigilancia.js';
 import { GestorAlertas } from './alertas.js';
 import { narrar, relatorioSituacao, montarTelemetria } from './agente.js';
-import { pedidoInterpretacao, pedidoRelatorio, lerResposta, extrairJSON, normalizarInterpretacao, normalizarRelatorio,
-  conversar, criarPolitica, custoEstimado, MODELO } from './spy/cerebro.js';
+import { pedidoInterpretacao, pedidoRelatorio, pedidoDiagnostico, lerResposta, extrairJSON, normalizarInterpretacao, normalizarRelatorio,
+  conversar, criarPolitica, custoEstimado, MODELO, ROTULO_RECURSO } from './spy/cerebro.js';
 import { ClienteAgente, detectarServidor } from './spy/cliente.js';
 import { RegistroIncidentes } from './spy/incidentes.js';
 import { Percepcao, abrirCamera, listarCameras, preVoo } from './percepcao.js';
@@ -513,7 +513,37 @@ const telemetriaAgora = () => montarTelemetria({
   historico: E.alertas.historico, trilhas: E.trilhas, metricas: E.saida?.metricas, zonas: cfg.zonas,
 });
 const quadroParaAgente = () => (cfg.agente.imagens ? quadroJPEG(LIMIARES.agente.larguraQuadro, LIMIARES.agente.qualidadeJpeg) : null);
-const enviarAgente = (tipo, msgs) => E.agente.enviar(tipo, msgs, { signal: AbortSignal.timeout(120000) });
+function avisarAjuste(recurso) {
+  logAgente({ nivel: 'aviso', texto: `A API recusou o ${ROTULO_RECURSO[recurso] || recurso} nesta conta — o agente segue sem ele (o resto funciona igual).` });
+}
+E.agente.aoAjuste = avisarAjuste;   // modo chave própria
+async function enviarAgente(tipo, msgs) {
+  const msg = await E.agente.enviar(tipo, msgs, { signal: AbortSignal.timeout(120000) });
+  for (const r of msg?._ajustes || []) avisarAjuste(r);   // modo servidor
+  return msg;
+}
+
+/** Teste de conexão REAL: chamada mínima com os mesmos recursos das tarefas (modelo, fallback, saída estruturada). */
+async function testarAgente() {
+  if (!E.agente.pronto) { agenteBloqueado(); return; }
+  const b = $('btnTestarAgente');
+  b.disabled = true; atualizarSeloAgente('TESTANDO…');
+  const t0 = performance.now();
+  try {
+    const msg = await enviarAgente('diagnostico', pedidoDiagnostico());
+    const ms = performance.now() - t0;
+    const r = lerResposta(msg);
+    contabilizar(r.uso);
+    if (r.recusa) { logAgente({ nivel: 'aviso', texto: '◎ TESTE DO AGENTE: a chamada chegou, mas o modelo recusou responder.' }); return; }
+    const j = extrairJSON(r.texto);
+    const ok = j?.status === 'ok';
+    logAgente({ nivel: ok ? 'agente' : 'aviso',
+      texto: `◎ TESTE DO AGENTE: ${ok ? 'OPERACIONAL' : 'resposta fora do formato'} · ${r.modelo || '?'} respondeu em ${(ms / 1000).toFixed(1)} s`
+        + ` · modo ${E.agente.modo === 'servidor' ? 'servidor' : 'chave própria'} · ${r.uso?.input_tokens ?? '?'}+${r.uso?.output_tokens ?? '?'} tokens`
+        + ` · ~US$ ${custoEstimado(r.uso).toFixed(4)}${r.fallback ? ' · atendido pelo fallback' : ''}${ok && j.mensagem ? ` — "${String(j.mensagem).slice(0, 120)}"` : ''}` });
+  } catch (e) { tratarErroAgente(e, 'o teste de conexão'); }
+  finally { b.disabled = false; atualizarSeloAgente(); }
+}
 
 function registrarIncidente(x, foto) {
   return E.incidentes.registrar({
@@ -1065,6 +1095,7 @@ function ligarControles() {
   $('btnInterpretar').addEventListener('click', () => interpretar(null, 'manual'));
   $('btnRelatorio').addEventListener('click', () => relatorioAgente('manual'));
   $('btnConfigAgente').addEventListener('click', abrirConfigAgente);
+  $('btnTestarAgente').addEventListener('click', testarAgente);
   $('formAgente').addEventListener('submit', salvarConfigAgente);
   $('btnCancelarAgente').addEventListener('click', () => $('dlgAgente').close());
   $('formChat').addEventListener('submit', ev => { ev.preventDefault(); const t = $('txtPergunta').value; $('txtPergunta').value = ''; perguntar(t); });

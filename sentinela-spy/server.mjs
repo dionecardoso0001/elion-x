@@ -23,7 +23,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { classificarCaminho, caminhoProibido, criarEntregador, CABECALHOS_SEGURANCA } from './estaticos.mjs';
-import { MODELO, montarPedido, validarMensagens } from './js/spy/cerebro.js';
+import { MODELO, montarPedido, validarMensagens, recursoRecusado } from './js/spy/cerebro.js';
 import { VERSAO, MEDIAPIPE_VERSAO } from './js/config.js';
 
 const RAIZ = path.dirname(fileURLToPath(import.meta.url));
@@ -98,6 +98,7 @@ export function criarServidor({ env = process.env, cliente = undefined } = {}) {
   const temCredencial = !!(env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN);
   const agente = cliente !== undefined ? cliente : (temCredencial ? new Anthropic({ maxRetries: 2, timeout: 120_000 }) : null);
   const limitador = criarLimitador({ porMinuto: Number(env.SPY_LIMITE_MIN) || 12 });
+  const compat = {};   // recursos opcionais que a API recusou para esta chave (vale para o processo)
   const entregador = criarEntregador();
 
   const json = (res, status, obj, extra = {}) => {
@@ -119,20 +120,29 @@ export function criarServidor({ env = process.env, cliente = undefined } = {}) {
     if (!limitador.permitir()) return json(res, 429, { erro: 'Muitas consultas ao agente em sequência — aguarde alguns segundos.', tentar_em_s: 10 }, { 'Retry-After': '10' });
     let corpo;
     try { corpo = JSON.parse(await lerCorpo(req)); } catch (e) { return json(res, 400, { erro: e.message === 'pedido grande demais' ? e.message : 'JSON inválido' }); }
-    let pedido;
-    try { validarMensagens(corpo?.tipo, corpo?.messages); pedido = montarPedido(corpo.tipo, corpo.messages); }
+    try { validarMensagens(corpo?.tipo, corpo?.messages); montarPedido(corpo.tipo, corpo.messages); }
     catch (e) { return json(res, 400, { erro: e.message }); }
     // o operador fechou a aba: cancela a chamada em vez de pagar por uma resposta que ninguém lê
     const ac = new AbortController();
     res.on('close', () => { if (!res.writableEnded) ac.abort(); });
-    try {
-      const msg = await agente.beta.messages.create(pedido, { signal: ac.signal });
-      return json(res, 200, msg);
-    } catch (e) {
-      if (ac.signal.aborted) return res.destroy();
-      const { status, erro, tentar_em_s } = traduzirErroApi(e);
-      if (status >= 500) console.error('[agente]', e?.status ?? '', e?.message);
-      return json(res, status, { erro, ...(tentar_em_s ? { tentar_em_s } : {}) }, tentar_em_s ? { 'Retry-After': String(tentar_em_s) } : {});
+    const ajustes = [];
+    for (;;) {
+      try {
+        const msg = await agente.beta.messages.create(montarPedido(corpo.tipo, corpo.messages, { compat }), { signal: ac.signal });
+        return json(res, 200, ajustes.length ? { ...msg, _ajustes: ajustes } : msg);
+      } catch (e) {
+        if (ac.signal.aborted) return res.destroy();
+        // recurso opcional recusado (400): adapta uma vez por recurso e repete
+        const recurso = e instanceof Anthropic.BadRequestError ? recursoRecusado(e.message) : null;
+        if (recurso && compat[recurso] !== false) {
+          compat[recurso] = false; ajustes.push(recurso);
+          console.warn(`[agente] a API recusou "${recurso}" (${e.message}) — seguindo sem ele`);
+          continue;
+        }
+        const { status, erro, tentar_em_s } = traduzirErroApi(e);
+        if (status >= 500) console.error('[agente]', e?.status ?? '', e?.message);
+        return json(res, status, { erro, ...(tentar_em_s ? { tentar_em_s } : {}) }, tentar_em_s ? { 'Retry-After': String(tentar_em_s) } : {});
+      }
     }
   }
 
@@ -140,7 +150,8 @@ export function criarServidor({ env = process.env, cliente = undefined } = {}) {
     try {
       const url = new URL(req.url, 'http://localhost');
       if (url.pathname === '/api/spy/estado' && req.method === 'GET') {
-        return json(res, 200, { disponivel: !!agente, exige_token: !!TOKEN, modelo: agente ? MODELO : null, versao: VERSAO });
+        return json(res, 200, { disponivel: !!agente, exige_token: !!TOKEN, modelo: agente ? MODELO : null, versao: VERSAO,
+          recursos_desligados: Object.keys(compat).filter(k => compat[k] === false) });
       }
       if (url.pathname === '/api/spy/mensagens') {
         if (req.method !== 'POST') return json(res, 405, { erro: 'use POST' }, { Allow: 'POST' });

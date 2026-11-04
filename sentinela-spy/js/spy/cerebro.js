@@ -20,7 +20,7 @@
 export const MODELO = 'claude-opus-5-5';
 export const BETA_FALLBACK = 'server-side-fallback-2026-07-01';
 export const PRECO = { entrada: 4, saida: 20, cacheEscrita: 5, cacheLeitura: 0.2 };
-export const TIPOS = ['interpretar', 'relatorio', 'conversa'];
+export const TIPOS = ['interpretar', 'relatorio', 'conversa', 'diagnostico'];
 const RISCOS = ['nenhum', 'baixo', 'moderado', 'alto', 'critico'];
 const CONFIANCA = ['baixa', 'media', 'alta'];
 const VEREDITOS = ['anomalia_confirmada', 'provavel_falso_alarme', 'inconclusivo'];
@@ -58,6 +58,8 @@ Você recebe o evento que os detectores locais acabaram de disparar, o quadro da
 TAREFA: RELATÓRIO DE SITUAÇÃO
 Você recebe a telemetria atual e o histórico de incidentes de uma janela de tempo. Correlacione no tempo: repetições (o mesmo tipo de evento voltando), escaladas, concentração em uma zona ou horário, padrões que nenhuma regra isolada vê. Seja concreto: cite horário e tipo dos incidentes que sustentam cada conclusão. Sem incidentes relevantes, diga isso em uma frase.`,
 
+  diagnostico: 'Você é o teste de conexão do agente SENTINELA SPY. Responda só com o JSON pedido, em português do Brasil.',
+
   conversa: `${IDENTIDADE}
 
 TAREFA: CONVERSA COM O OPERADOR
@@ -84,6 +86,15 @@ export const ESQUEMAS = {
       acao_recomendada: { type: 'string', description: 'Uma ação concreta, proporcional ao risco.' },
       divergencias: lista('Onde a cena contradiz um detector local.'),
       confianca: { type: 'string', enum: CONFIANCA },
+    },
+  },
+  diagnostico: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['status', 'mensagem'],
+    properties: {
+      status: { type: 'string', enum: ['ok'] },
+      mensagem: { type: 'string', description: 'Uma frase curta confirmando que o agente está operacional.' },
     },
   },
   relatorio: {
@@ -137,25 +148,44 @@ const NOMES_FERRAMENTAS = new Set(FERRAMENTAS.map(f => f.name));
  * pedido no modelo recomendado se o classificador de segurança recusar).
  * Pensamento: adaptativo, padrão do modelo (não pode ser desligado no Opus 5.5).
  */
-export function montarPedido(tipo, messages, { esforco } = {}) {
+export function montarPedido(tipo, messages, { esforco, compat = {} } = {}) {
   if (!TIPOS.includes(tipo)) throw new Error(`tarefa desconhecida: ${tipo}`);
   const p = {
     model: MODELO,
-    max_tokens: 16000,
-    betas: [BETA_FALLBACK],
-    fallbacks: 'default',
+    max_tokens: tipo === 'diagnostico' ? 2048 : 16000,
     system: [{ type: 'text', text: SISTEMAS[tipo], cache_control: { type: 'ephemeral' } }],
     messages,
   };
+  if (compat.fallbacks !== false) { p.betas = [BETA_FALLBACK]; p.fallbacks = 'default'; }
+  const comEsforco = nivel => (compat.esforco === false ? {} : { effort: esforco || nivel });
   if (tipo === 'conversa') {
     p.tools = FERRAMENTAS;
-    p.output_config = { effort: esforco || 'medium' };
+    const oc = comEsforco('medium');
+    if (Object.keys(oc).length) p.output_config = oc;
   } else {
-    // interpretação e relatório: tarefa de leitura com dados prontos — esforço baixo responde em segundos
-    p.output_config = { effort: esforco || 'low', format: { type: 'json_schema', schema: ESQUEMAS[tipo] } };
+    // interpretação, relatório e diagnóstico: leitura com dados prontos — esforço baixo responde em segundos
+    p.output_config = { ...comEsforco('low'), format: { type: 'json_schema', schema: ESQUEMAS[tipo] } };
   }
   return p;
 }
+
+/**
+ * Recurso OPCIONAL que a API recusou (HTTP 400) nesta conta/versão — o pedido se
+ * adapta uma vez e segue, em vez de o agente parar de funcionar. Só recursos que
+ * não mudam ferramentas nem histórico (mudar ferramenta no meio da conversa
+ * invalidaria o pensamento preservado do modelo).
+ * @returns {'fallbacks'|'esforco'|null}
+ */
+export function recursoRecusado(mensagem = '') {
+  const m = String(mensagem).toLowerCase();
+  if (/fallback|server-side-fallback|anthropic-beta/.test(m)) return 'fallbacks';
+  if (/\beffort\b/.test(m)) return 'esforco';
+  return null;
+}
+export const ROTULO_RECURSO = { fallbacks: 'fallback de recusa', esforco: 'nível de esforço' };
+
+/** Pedido do teste de conexão: chamada mínima com os MESMOS recursos das tarefas reais. */
+export const pedidoDiagnostico = () => [{ role: 'user', content: 'Teste de conexão da plataforma: confirme que o agente está operacional.' }];
 
 /** Mensagem do usuário para interpretar um evento (imagem opcional, telemetria cercada como DADO). */
 export function pedidoInterpretacao({ incidente, telemetria, imagemB64 = null }) {
