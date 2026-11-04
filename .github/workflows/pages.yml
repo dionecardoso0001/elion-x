@@ -16,13 +16,18 @@ on:
     paths:
       - 'sentinela-spy/**'
       - '.github/workflows/pages.yml'
+  # no PR, só valida (testes + build); publicar é exclusivo da main
+  pull_request:
+    paths:
+      - 'sentinela-spy/**'
+      - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pages
+  group: ${{ github.event_name == 'pull_request' && format('pages-pr-{0}', github.ref) || 'pages' }}
   cancel-in-progress: false
 
 jobs:
@@ -59,11 +64,14 @@ jobs:
           echo "### Site montado" >> "$GITHUB_STEP_SUMMARY"
           echo "$(find _site -type f | wc -l) arquivos, $(du -sh _site | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+        if: github.event_name != 'pull_request'
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        if: github.event_name != 'pull_request'
         with:
           path: _site
 
   publicar:
+    if: github.event_name != 'pull_request'
     needs: construir
     runs-on: ubuntu-latest
     timeout-minutes: 10
