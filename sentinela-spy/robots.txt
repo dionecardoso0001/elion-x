@@ -1,0 +1,3 @@
+# Sentinela Spy — console de vigilância pessoal. Nada aqui é para buscador.
+User-agent: *
+Disallow: /

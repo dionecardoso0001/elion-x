@@ -1,0 +1,27 @@
+{
+  "name": "sentinela-spy",
+  "version": "1.0.0",
+  "description": "Sentinela Spy — plataforma de visão computacional com agente de IA que interpreta anomalias; a percepção roda no próprio aparelho",
+  "private": true,
+  "type": "module",
+  "main": "server.mjs",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "preparar": "node scripts/preparar.mjs",
+    "start": "node server.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/testar.mjs",
+    "avaliar": "node scripts/avaliar.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.137.0",
+    "@mediapipe/tasks-vision": "1.1.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  },
+  "license": "MIT",
+  "author": "Dione Cardoso"
+}

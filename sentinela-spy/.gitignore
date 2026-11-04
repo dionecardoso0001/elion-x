@@ -1,0 +1,10 @@
+node_modules/
+# gerados por `npm run preparar` (binários pesados e código de terceiros empacotado)
+vendor/
+modelos/
+plataforma.json
+# gerado por `npm run build`
+dist/
+# segredos
+.env
+.env.*
