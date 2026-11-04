@@ -465,6 +465,17 @@ Eleven JSON files in `data/` — `agenda` · `memory` · `faces` · `voices` · 
 | `memory.json` | Personal and professional memory |
 | `watch.json` | Client accounts under watch |
 
+The static file server works from an **allowlist** (`estaticos.mjs`): it only serves
+the interface pages, the manifests, `sw.js`, `robots.txt` and the `assets/` tree.
+Hidden segments (`.env`, `.git`), `data/`, `node_modules/`, `bin/` and any path with
+`:` or `~` (on Windows, NTFS opens `.env` as `ENV~1` and `data/` as
+`data::$INDEX_ALLOCATION`) get a 404, and the real on-disk path is checked again — the
+mobile-access tunnel puts this server on the internet. A missing file gets a **real
+404** (no fallback to the main page), `robots.txt` plus the `X-Robots-Tag` header keep
+the hub out of search engines, pages cannot be framed by other sites (anti-clickjacking),
+and third-party content in the viewer runs in a sandbox with no scripts and no
+same-origin access. Responses are served with brotli/gzip, ETag and 304.
+
 ### Standing principles
 
 - Credentials appear by **name**, never by value

@@ -254,7 +254,7 @@ e voz no navegador.
 
 | Missão | Onde fica a câmera | Antes de começar |
 |---|---|---|
-| **SENTINELA** | webcam ou celular fixo olhando a área | **✎ DESENHAR ZONA**: toque nos cantos da área, **FECHAR ZONA** (restrita = intrusão; monitorada = permanência) |
+| **SENTINELA** | webcam ou celular fixo olhando a área | **✎ DESENHAR ZONA**: toque nos cantos da área, **FECHAR ZONA** (restrita = intrusão; monitorada = permanência). Sem mouse: setas movem o cursor, **Espaço** marca o canto, **Backspace** desfaz, **Enter** fecha, **Esc** cancela |
 | **MOTORISTA** | celular no suporte, câmera **frontal** no rosto | com o carro **parado**, olhe para a via por 5 s (calibração). **◑ DISCRETO** escurece a tela |
 | **TRÂNSITO** | celular no para-brisa, câmera **traseira** na via | alinhe o trapézio do **CORREDOR** à sua faixa |
 
@@ -266,6 +266,25 @@ e voz no navegador.
   as divergências com o detector local. Desligada por padrão no modo automático.
 - **● GRAVAR**, **⌖ CAPTURA** e **⇩ EXPORTAR LOG** salvam só neste aparelho.
 - Lento? `?cpu=1` no endereço força a CPU (alguns drivers de GPU de celular erram).
+
+### Calibrar com a sua realidade (painel CAMPO)
+
+Alarme demais ou de menos? Não mexa em limiar no escuro — **meça**:
+
+1. Escolha o **perfil** (CONSERVADOR · PADRÃO · SENSÍVEL). Nenhum perfil passa dos
+   pisos de segurança (colisão nunca abaixo de 2,6 s; microssono nunca acima de 1,5 s).
+2. **● GRAVAR CAMPO** e opere normalmente. A cada alerta, aperte **V** (correto) ou
+   **F** (falso alarme); se algo aconteceu e ele não avisou, **P** (perdido). Antes de um
+   teste de propósito ("agora vou fechar os olhos"), aperte **M**.
+3. **■ PARAR** baixa um `.jsonl` (só números — nenhuma imagem). Avalie:
+
+```bash
+npm run sentinela:avaliar -- sentinela-campo-motorista-2026-11-04T08-15-00.jsonl
+```
+
+O relatório dá alarmes por hora, precisão e revocação **com margem de erro** e o tempo
+de reação nos seus testes, e diz o que ajustar. Uma sessão curta não decide nada — o
+próprio relatório avisa. Detalhes: [SENTINELA.md, seção 8](SENTINELA.md#8-calibração-de-campo).
 
 Detalhes técnicos e limites: [SENTINELA.md](SENTINELA.md).
 

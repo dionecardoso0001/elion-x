@@ -111,7 +111,8 @@ aparelho** — webcam do PC ou câmera do celular — em três missões:
 ```bash
 node server.js              # → http://localhost:3001/sentinela.html
 npm run sentinela:modelos   # opcional: modelos offline (~16 MB, SHA-256 conferido)
-npm test                    # 76 testes da lógica de decisão
+npm test                    # 96 testes (lógica de decisão, calibração e superfície HTTP)
+npm run sentinela:avaliar -- sessao.jsonl   # avalia uma gravação de campo
 ```
 
 No celular: `ELION-X Mobile.bat` → `https://<túnel>/sentinela.html` (a câmera exige
@@ -483,7 +484,11 @@ entrega as páginas da interface, os manifestos, o `sw.js` e a árvore `assets/`
 Segmento oculto (`.env`, `.git`), `data/`, `node_modules/`, `bin/` e qualquer caminho
 com `:` ou `~` (no Windows, o NTFS abre `.env` como `ENV~1` e `data/` como
 `data::$INDEX_ALLOCATION`) recebem 404, e o caminho real no disco é conferido de novo
-— o túnel do acesso móvel põe o servidor na internet.
+— o túnel do acesso móvel põe o servidor na internet. Arquivo inexistente responde
+**404 de verdade** (sem cair na página principal), o `robots.txt` e o cabeçalho
+`X-Robots-Tag` tiram a central dos buscadores, as páginas não podem ser enquadradas por
+outro site (anti-*clickjacking*) e o conteúdo de terceiro do visor roda em *sandbox*
+sem scripts e sem a origem da casa. Detalhes: [docs/SENTINELA.md, seção 7](docs/SENTINELA.md#7-segurança-e-privacidade).
 
 ### Princípios permanentes
 

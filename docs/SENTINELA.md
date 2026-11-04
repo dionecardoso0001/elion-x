@@ -21,10 +21,12 @@ https://<seu-túnel>.trycloudflare.com/sentinela.html   ← no celular (ELION-X 
 5. [Alertas: sirene, voz e nível de ameaça](#5-alertas-sirene-voz-e-nível-de-ameaça)
 6. [O agente SAFER-X](#6-o-agente-safer-x)
 7. [Segurança e privacidade](#7-segurança-e-privacidade)
-8. [O que foi validado — e o que não foi](#8-o-que-foi-validado--e-o-que-não-foi)
-9. [Limitações e riscos](#9-limitações-e-riscos)
-10. [Próximos passos](#10-próximos-passos)
-11. [Referências](#11-referências)
+8. [Calibração de campo](#8-calibração-de-campo)
+9. [Qualidade medida: acessibilidade, desempenho e CI](#9-qualidade-medida-acessibilidade-desempenho-e-ci)
+10. [O que foi validado — e o que não foi](#10-o-que-foi-validado--e-o-que-não-foi)
+11. [Limitações e riscos](#11-limitações-e-riscos)
+12. [Próximos passos](#12-próximos-passos)
+13. [Referências](#13-referências)
 
 ---
 
@@ -135,23 +137,31 @@ Orçamento de inferência por missão (o celular não roda tudo a 30 quadros/s):
 
 | Arquivo | Linhas | Responsabilidade |
 |---|---:|---|
-| `sentinela.html` | 215 | Estrutura do console, acessível (aria-live, rótulos), CSP |
-| `assets/sentinela.css` | 359 | Identidade visual "sala de interceptação", responsiva, movimento reduzido |
-| `assets/sentinela/config.js` | 215 | **Fonte única**: modelos + SHA-256, versão do runtime, limiares com procedência |
-| `assets/sentinela/nucleo.js` | 770 | Orquestração: boot, câmera, laço, alertas, zonas, gravação, análise profunda |
+| `sentinela.html` | 243 | Estrutura do console, acessível (aria-live, rótulos, editor de zona por teclado), CSP |
+| `assets/sentinela.css` | 388 | Identidade visual "sala de interceptação", responsiva, movimento reduzido, fontes locais |
+| `assets/fontes/` | — | 7 fontes WOFF2 (Fontsource 5.3.0, latin, 79 KB) + licenças SIL OFL-1.1 |
+| `assets/sentinela/config.js` | 262 | **Fonte única**: modelos + SHA-256, runtime, limiares com procedência, perfis e pisos |
+| `assets/sentinela/nucleo.js` | 916 | Orquestração: boot, câmera, laço, alertas, zonas, gravação, campo, análise profunda |
 | `assets/sentinela/percepcao.js` | 258 | Runtime MediaPipe (local → CDN), modelos com SHA-256 e cache, GPU → CPU |
+| `assets/sentinela/geometria.js` | 134 | Funções puras: IoU, ponto em polígono, trapézio do corredor, estatística robusta, regressão, vetores 3D |
 | `assets/sentinela/rastreador.js` | 178 | Rastreador multi-alvo estilo SORT, TTL adaptativo à cadência |
-| `assets/sentinela/motorista.js` | 383 | EAR, PERCLOS P80, pose da cabeça, bocejo, microssono, mal súbito |
-| `assets/sentinela/transito.js` | 219 | Corredor, distância pinhole, TTC por escala, headway, pedestre/animal/obstáculo |
+| `assets/sentinela/motorista.js` | 386 | EAR, PERCLOS P80, pose da cabeça, bocejo, microssono, mal súbito |
+| `assets/sentinela/transito.js` | 224 | Corredor, distância pinhole, TTC por escala, headway, pedestre/animal/obstáculo |
 | `assets/sentinela/vigilancia.js` | 309 | Zonas, abandono com dono, retirada, corrida, queda, mãos erguidas, risco |
 | `assets/sentinela/anomalia.js` | 95 | Modelo estatístico de normalidade da cena (Welford, esquecimento) |
 | `assets/sentinela/alertas.js` | 152 | Condição × evento, histerese, fila de voz por gravidade, nível de ameaça |
 | `assets/sentinela/agente.js` | 136 | Narrativa e protocolo do SAFER-X, telemetria da análise profunda |
 | `assets/sentinela/sirene.js` | 153 | Sirene sintetizada, voz pt-BR com *ducking*, vibração, tela ligada |
-| `assets/sentinela/hud.js` | 386 | HUD em canvas: alvos, zonas, esqueletos, malha facial, horizonte artificial |
-| `sentinela.mjs` | 266 | Servidor: runtime por lista branca, status, análise profunda (Claude) |
+| `assets/sentinela/hud.js` | 405 | HUD em canvas: alvos, zonas, cursor do editor, esqueletos, malha facial, horizonte |
+| `assets/sentinela/gravador.js` | 133 | Gravador de campo JSONL a 10 Hz (métricas, alertas, anotações — sem imagem) |
+| `assets/sentinela/avaliacao.js` | 205 | Avaliador de sessão: alarmes/h, precisão/revocação com IC de Wilson, latência |
+| `sentinela.mjs` | 262 | Servidor: runtime por lista branca, status, análise profunda (Claude) |
+| `estaticos.mjs` | 229 | Lista de permissão dos estáticos, cabeçalhos, compressão brotli/gzip, ETag/304, 404 real |
 | `scripts/sentinela-modelos.mjs` | 57 | Download offline dos modelos com SHA-256 e escrita atômica |
-| `tests/sentinela/*.test.js` | 863 | 76 testes `node:test` (núcleo e servidor) |
+| `scripts/sentinela-avaliar.mjs` | 25 | CLI `npm run sentinela:avaliar -- sessao.jsonl [--json]` |
+| `tests/sentinela/*.test.js` | 1003 | 82 testes `node:test` (núcleo, campo e servidor) |
+| `tests/estaticos.test.js`, `tests/entrega.test.js` | 197 | 11 testes da superfície HTTP (lista de permissão, cabeçalhos, compressão, 304, 404) |
+| `.github/workflows/ci.yml` | — | CI: sintaxe + testes em Node 20/22/LTS (Linux) e LTS (Windows), auditoria informativa |
 
 Dependência nova (a quarta do projeto): **`@mediapipe/tasks-vision` 1.1.1** — Google,
 Apache-2.0, **sem dependências transitivas**, versão **fixada exatamente** (um runtime
@@ -323,9 +333,14 @@ prompt por uma placa ou tela filmada).
 | Chave da API | só no servidor; o navegador nunca a vê |
 | Modelos | SHA-256 fixado e conferido a **cada** carga (inclusive do cache) — modelo adulterado é recusado |
 | Runtime | dependência fixada, servida por lista branca de 5 arquivos, versão exata no caminho (cache imutável seguro) |
-| Página | CSP restringe conexões a: própria origem, modelos do Google e CDN do runtime |
+| Página | CSP restringe conexões a: própria origem, modelos do Google e CDN do runtime; fontes só da própria origem (`font-src 'self'`) |
 | Saída do LLM | inserida só com `textContent` (nunca `innerHTML`) |
 | Pedido ao servidor | base64, tipo, modo e tamanho validados; limite de taxa |
+| Cabeçalhos HTTP | `X-Frame-Options: SAMEORIGIN` + `frame-ancestors 'self'` (anti-*clickjacking*), `Permissions-Policy` (câmera, microfone e GPS só da própria origem), `nosniff`, `Referrer-Policy` |
+| Conteúdo de terceiro (visor) | servido com CSP `sandbox` **sem** `allow-scripts` e **sem** `allow-same-origin` (ver abaixo) |
+| Indexação | `robots.txt` com `Disallow: /` + `X-Robots-Tag: noindex, nofollow` — central pessoal não tem o que ganhar em buscador |
+| Terceiros em tempo de execução | nenhum na tela de boot: runtime, modelos (com cópia local) e **fontes** saem da própria origem — o IP do operador não vai para o Google Fonts |
+| Arquivo inexistente | `404` de verdade (antes: página principal com `200`); fora da lista de permissão, existir ou não dá a mesma resposta — sem oráculo de arquivos |
 
 ### Vulnerabilidade pré-existente corrigida
 
@@ -341,14 +356,36 @@ A primeira correção (lista de **bloqueio**: segmento oculto, `data/`, `node_mo
 ambiente real do ELION-X — o NTFS abre o mesmo arquivo por apelidos que um filtro de
 texto não reconhece: nome curto 8.3 (`/ENV~1` → `.env`, `/GIT~1/config`) e fluxo de
 diretório (`/data::$INDEX_ALLOCATION/google-token.json`). A correção definitiva
-(`estaticos.mjs`) é uma **lista de permissão**: só saem os oito arquivos da raiz que a
-interface usa (levantados de todos os HTML/JS do cliente) e a árvore `assets/`; caminho
+(`estaticos.mjs`) é uma **lista de permissão**: só saem os nove arquivos da raiz que a
+interface usa (levantados de todos os HTML/JS do cliente, mais o `robots.txt`) e a árvore `assets/`; caminho
 com `:`, `~` ou byte nulo é recusado; e o caminho **real** resolvido no disco
 (`realpath`) é conferido de novo, o que pega link simbólico e qualquer apelido restante.
 Testado em `tests/estaticos.test.js`, inclusive com as grafias NTFS.
 
 **Recomendação:** se o ELION-X já rodou com túnel antes desta correção, **rotacione as
 chaves de API** do `.env` e revogue o token do Gmail — não há como saber se foram lidas.
+
+### Visor da central: conteúdo de terceiro na mesma origem (corrigido)
+
+O visor da central mostra sites externos por um *proxy* que reescreve a página e a
+serve **na origem do ELION-X**. A limpeza por expressão regular (remover `<script>`)
+não fecha a porta: manipulador de evento (`<img src=x onerror=…>`) passa direto e
+`<scr<script></script>ipt>` se remonta depois da remoção. Rodando na mesma origem, esse
+script alcançaria `/api/memory`, `/api/email` e o envio de WhatsApp. A correção é
+estrutural: todo conteúdo de terceiro sai com `Content-Security-Policy: sandbox …`
+**sem** `allow-scripts` (nenhum script roda) e **sem** `allow-same-origin` (o documento
+ganha origem opaca — mesmo que algo rodasse, não seria "da casa"). Provado no Chromium
+com uma página-armadilha: nenhum script executou e a origem do documento ficou opaca.
+
+### Dependências: achado do `npm audit` (não corrigido)
+
+`npm audit --omit=dev` (04/11/2026): **20 vulnerabilidades — 14 altas, 6 moderadas,
+0 críticas — todas transitivas de `whatsapp-web.js`** (via `puppeteer`, `proxy-agent`,
+`basic-ftp`, `js-yaml` e outras). A "correção" sugerida pelo npm é *rebaixar* para
+`whatsapp-web.js@1.34.2`, fora da faixa declarada — não recomendável sem testar a
+integração de WhatsApp, que depende de versões recentes para acompanhar o WhatsApp Web.
+A Sentinela não usa nada disso (sua única dependência, `@mediapipe/tasks-vision`, não
+tem dependências transitivas). A CI publica a contagem a cada execução, sem bloquear.
 
 ### LGPD
 
@@ -362,14 +399,172 @@ jurídica.
 
 ---
 
-## 8. O que foi validado — e o que não foi
+## 8. Calibração de campo
+
+Os limiares da seção 4 têm procedência declarada, mas **heurística sem medição de campo
+é palpite educado**. A Sentinela traz o instrumental para transformar operação real em
+número: um gravador, perfis de sensibilidade com pisos de segurança e um avaliador.
+
+### Perfis de sensibilidade (painel CAMPO)
+
+| Perfil | Para quê | Exemplos do que muda (motorista · trânsito · vigilância) |
+|---|---|---|
+| **CONSERVADOR** | ambiente com muito falso alarme | PERCLOS aviso 10%/crítico 15%, microssono 1,3 s · TTC de aviso 3,2 s · intrusão só após 1,5 s |
+| **PADRÃO** | ponto de partida (limiares da seção 4) | — |
+| **SENSÍVEL** | evento perdido, operação de risco | PERCLOS 6%/10%, microssono 0,8 s · TTC crítico 3,0 s e aviso 5,0 s · intrusão a 0,3 s |
+
+**Pisos de segurança** (`PISOS` em `config.js`), aplicados *depois* do perfil — nenhum
+perfil passa deles:
+
+- TTC crítico **nunca abaixo de 2,6 s** (requisito da NHTSA de alertar até TTC 2,1 s
+  com veículo parado à frente, + 0,5 s de margem para a latência deste pipeline);
+- microssono **nunca acima de 1,5 s**; PERCLOS crítico **nunca acima de 15%**.
+
+Um teste (`tests/sentinela/campo.test.js`) confere que toda chave de perfil existe nos
+limiares-base (erro de digitação não passa calado) e que os pisos valem nos três perfis.
+
+### Gravador (`gravador.js`)
+
+**● GRAVAR CAMPO** registra um arquivo **JSONL** no próprio aparelho:
+
+- **cabeçalho** com missão, perfil, limiares *efetivos*, delegado (GPU/CPU) e se é
+  demonstração — o arquivo diz com que régua foi medido;
+- **amostras a 10 Hz** (relógio ideal: a 30 quadros/s não vira 7,5 Hz) das métricas da
+  missão, arredondadas a 3 casas — **sem imagem, sem pontos faciais, sem campo não
+  previsto** (privacidade por construção, coberta por teste);
+- **alertas** com início/fim (a escalada do mesmo alerta não conta como alerta novo);
+  alerta que já soava quando a gravação começou entra marcado `pre_existente`;
+- **anotações** do operador por tecla: **V** alerta correto · **F** falso alarme ·
+  **P** evento perdido · **M** marca de teste dirigido ("agora vou fechar os olhos") —
+  V/F se ligam ao alerta mais recente (até 30 s).
+
+Durante a gravação, perfil e missão ficam **travados** (uma sessão = uma régua). Teto de
+250 mil linhas (~7 h a 10 Hz); ao atingir, a gravação para e o arquivo diz que truncou.
+Atalhos não disparam com Ctrl/⌘/Alt — antes, Ctrl+F (buscar) gravava "falso alarme".
+
+### Avaliador
+
+```bash
+npm run sentinela:avaliar -- sentinela-campo-motorista-2026-11-04T08-15-00.jsonl
+npm run sentinela:avaliar -- sessao.jsonl --json      # para planilha/painel
+```
+
+Entrega alertas por tipo e **por hora** (só para sessão ≥ 5 min — taxa de sessão curta
+engana), **precisão e revocação com intervalo de confiança de Wilson a 95%**, latência
+dos testes dirigidos (marca → alerta em até 10 s; mediana e p95), cobertura do rosto
+pós-calibração e a distribuição das métricas (p5 · mediana · p95). As recomendações
+citam o número em que se apoiam: falso alarme frequente (≥ 3 FP e precisão < 60%),
+eventos perdidos (≥ 2), **fadiga de alarme** (> 6 críticos/h em sessão ≥ 10 min),
+rosto ausente > 15% do tempo, latência p95 > 3 s, sessão truncada ou de demonstração.
+
+**Protocolo mínimo sugerido** antes de mudar qualquer limiar: algumas horas por cenário
+(dia, noite, chuva, estrada, cidade), ≥ 10 alertas rotulados por tipo e testes dirigidos
+em cada sessão. Com 5 acertos em 6, por exemplo, o IC95% da precisão vai de 44% a 97%:
+amostra pequena não decide nada — o relatório mostra isso em vez de esconder.
+
+---
+
+## 9. Qualidade medida: acessibilidade, desempenho e CI
+
+Números medidos nesta sessão, no contêiner de desenvolvimento (Chromium headless,
+**sem GPU real**, CPU compartilhada). Servem para comparar versões, não para prometer
+desempenho em um aparelho específico.
+
+### Acessibilidade — WCAG 2.2 A/AA (axe-core 4.14)
+
+Cinco estados reais auditados: boot, operação Sentinela, Trânsito com alerta ativo,
+Motorista em celular (Pixel 7) e editor de zona aberto.
+
+| | Antes | Depois |
+|---|---|---|
+| Violações | 2 sérias (`scrollable-region-focusable` em `#bootLog` e `#agenteLog`) + 1 atributo ARIA proibido em `#ativas` | **0 nos 5 estados** |
+| Contraste | `--c-tenue` #3f735a: **3,27:1** (reprova 1.4.3) | #569474: **≥ 5,05:1** no pior fundo |
+| Teclado (2.1.1) | zona só desenhável com ponteiro | editor por teclado: setas movem o cursor (Shift = fino), Espaço marca, Backspace desfaz, Enter fecha, Esc cancela; posição e vértices anunciados em região viva; foco devolvido ao botão |
+
+Itens que o axe deixa para revisão humana: `color-contrast` sobre fundos com gradiente
+(conferido à mão: todos os tokens de texto passam de 4,5:1) e `video-caption` (não se
+aplica: o vídeo é a câmera ao vivo, sem trilha de áudio). Lighthouse: Acessibilidade
+**100** em celular e desktop.
+
+**Defeito encontrado no caminho:** Enter com o foco em "✕ CANCELAR" primeiro *salvava* a
+zona (atalho global) e só depois cancelava. Corrigido: Enter/Espaço em botão pertencem
+ao botão. Coberto pelo E2E de teclado.
+
+### Desempenho — Lighthouse 13.6, mediana de 3 rodadas
+
+Mesmo ambiente, commit anterior (`a44ad2f`) × esta versão:
+
+| Celular (simulado) | Antes | Depois | Δ |
+|---|---:|---:|---:|
+| Bytes trafegados (1ª visita) | 27,3 MB | **13,4 MB** | −51% |
+| First Contentful Paint | 1.674 ms | **756 ms** | −55% |
+| Speed Index | 5.041 ms | **1.670 ms** | −67% |
+| Time to Interactive | 10.734 ms | **4.916 ms** | −54% |
+| Cumulative Layout Shift | 0,000 | 0,056 | ver nota 2 |
+| Largest Contentful Paint | 1.674 ms | 2.972 ms | ver nota 3 |
+| Total Blocking Time | 1.384 ms | 1.814 ms | ver nota 4 |
+| Nota Performance | 70 | 67 | −3 |
+
+| Desktop | Antes | Depois | Δ |
+|---|---:|---:|---:|
+| First Contentful Paint / LCP | 491 ms | **203 ms** | −59% |
+| Speed Index | 878 ms | **596 ms** | −32% |
+| Time to Interactive | 1.606 ms | **1.013 ms** | −37% |
+| Cumulative Layout Shift | 0,049 | **0,013** | −73% |
+| Total Blocking Time | 208 ms | 276 ms | ver nota 4 |
+| Nota Performance | 93 | 89 | −4 |
+
+O que mudou: **compressão brotli/gzip** (o WASM do MediaPipe, 13,5 MB, viaja como
+3,3 MB; JS/CSS/HTML a ~30%), calculada uma vez por versão do arquivo e guardada em cache
+com teto de memória; **ETag + 304** em vez de `no-store` (o navegador revalida a cada
+uso e recebe 304 de poucos bytes quando nada mudou); **fontes auto-hospedadas** no lugar
+do CSS bloqueante do Google Fonts; `robots.txt` válido e **404 real**.
+
+**Notas de honestidade — leia antes de citar a nota:**
+
+1. **A nota Performance caiu 3–4 pontos apesar de todo o resto melhorar.** Ela pesa TBT
+   (30%) e LCP (25%), e os dois são afetados pelos itens 3 e 4 — não por lentidão nova.
+2. **CLS do "antes" é artificial:** neste contêiner o Google Fonts é bloqueado pelo
+   *proxy*, então a fonte nunca carregava e nada se deslocava. Com a fonte carregando de
+   verdade e `font-display: swap`, medimos **CLS 0,159** (acima do limite "bom" de 0,1).
+   Com `font-display: optional` + `preload`, caiu para **0,056**.
+3. **LCP do celular:** o maior elemento passou a ser a linha de log *"GPU por software
+   detectada (SwiftShader…)"*, que só existe em máquina **sem GPU** como este contêiner e
+   aparece depois do pré-voo. Num aparelho com GPU, essa linha não é escrita. Não
+   "consertei" a linha para enganar a métrica.
+4. **TBT não piorou de fato:** a soma de tarefas longas ficou praticamente igual
+   (2.519 → 2.701 ms no celular; 588 → 580 ms no desktop). No "antes", 766 ms dessas
+   tarefas terminavam **antes do FCP** e o TBT não as conta; com o FCP 55% mais cedo,
+   passaram a contar. O bloqueio real — ~2,6 s de tarefas longas na thread principal
+   no celular simulado, atribuídas à criação dos detectores no `nucleo.js` e a trechos
+   "não atribuíveis" (o padrão de execução WebAssembly) — já existia e tem correção
+   estrutural (seção 12).
+5. **SEO 91 → 63 é deliberado:** `noindex` + `Disallow: /` (seção 7). A categoria mede
+   o quanto um buscador acha a página — o oposto do que uma central com câmera quer.
+
+### Integração contínua
+
+`.github/workflows/ci.yml`, em todo *push* e *pull request*: `npm ci --ignore-scripts`
+(nenhum script de instalação de terceiro roda), `node --check` em todo JavaScript
+versionado e `npm test`, em **Node 20** (mínimo do `engines`), **22** e a **LTS
+vigente** no Linux, mais a LTS no **Windows** (onde a plataforma roda). Ações fixadas
+por **SHA de commit** (tag é mutável), credencial do *checkout* não persistida,
+permissão só de leitura. A auditoria de dependências publica a contagem no resumo da
+execução sem bloquear (achado conhecido na seção 7). Validado localmente com
+`actionlint` 1.7.7 e com a suíte completa em Node 20.20.2 e 22.23.4.
+
+---
+
+## 10. O que foi validado — e o que não foi
 
 **Validado nesta entrega:**
 
-- **76 testes automatizados** (`npm test`), com cenários físicos sintéticos de resposta
-  conhecida: pose da cabeça girada em ângulos conhecidos, PERCLOS de 10% com piscadas
-  misturadas, aproximação a 10 m/s, queda brusca × deitar devagar, abandono com dono que
-  se afasta, contrato exato da chamada à API (com `fetch` simulado, sem custo).
+- **96 testes automatizados** (`npm test`; 82 da Sentinela), com cenários físicos
+  sintéticos de resposta conhecida: pose da cabeça girada em ângulos conhecidos, PERCLOS
+  de 10% com piscadas misturadas, aproximação a 10 m/s, queda brusca × deitar devagar,
+  abandono com dono que se afasta, contrato exato da chamada à API (com `fetch` simulado,
+  sem custo), sessão de campo sintética de 10 min com rótulos conhecidos, e a superfície
+  HTTP (lista de permissão, cabeçalhos, brotli/gzip byte a byte, 304, 404, teto do cache).
 - **E2E em Chromium real** com câmera falsa alimentada por imagens públicas de teste do
   projeto MediaPipe: as três missões rodam ponta a ponta; pessoa detectada a 95%,
   esqueleto associado, calibração do condutor concluída (EAR-base 0,201), alerta crítico
@@ -392,7 +587,7 @@ jurídica.
 
 ---
 
-## 9. Limitações e riscos
+## 11. Limitações e riscos
 
 - **Não é ADAS nem DMS homologado.** Não freia, não substitui sistemas certificados
   e não deve ser a única barreira de segurança. É um assistente de atenção.
@@ -408,10 +603,20 @@ jurídica.
 - **Legal:** segurar ou manusear o celular ao dirigir é infração gravíssima (CTB,
   art. 252, parágrafo único); há interpretação de que interagir com o aparelho fixado
   também conta. Configure parado; em movimento, só os alertas falam.
+- **A percepção roda na thread principal.** A inicialização dos detectores e cada
+  inferência bloqueiam a interface enquanto duram (no contêiner, só CPU: ~80–200 ms por
+  quadro). Toque em botão durante esse intervalo responde com atraso. Com GPU real a
+  inferência é bem mais curta, mas a inicialização continua bloqueando (seção 9).
+- **Fonte na 1ª visita com rede lenta:** com `font-display: optional`, se a fonte não
+  chegar a tempo, aquela visita fica com a fonte de reserva (sem pulo de layout); a
+  fonte já baixada entra na próxima abertura.
+- **Boot otimista:** o boot pré-carrega os modelos da missão marcada ao abrir a página;
+  quem troca de missão antes de iniciar baixa também os da nova (uma vez — depois ficam
+  no cache com SHA-256).
 
 ---
 
-## 10. Próximos passos
+## 12. Próximos passos
 
 1. **Validação de campo** com protocolo: motoristas voluntários, sessões noturnas e
    diurnas, escala de sonolência (KSS) como referência, medição de falso alarme por hora.
@@ -422,10 +627,20 @@ jurídica.
 4. **Frota/IoT:** eventos (não vídeo) publicados via MQTT para um backend → data lake,
    com painel de gestão — o que exige a governança LGPD da seção 7.
 5. **Detecção de faixa** para tirar o corredor manual do modo trânsito.
+6. **Percepção num Web Worker** (proposta de arquitetura, com a evidência da seção 9):
+   `percepcao.js` passa a ser um *proxy* com a mesma API; o *worker* cria os detectores
+   e recebe quadros como `ImageBitmap` transferível (cópia zero), um quadro em voo por
+   vez (descarta os intermediários — já é o comportamento desejado); os analisadores,
+   leves, continuam na thread principal. Ganho esperado: TBT e atraso de toque perto de
+   zero durante boot e operação. Riscos a validar **em aparelho real**: GPU no *worker*
+   exige `OffscreenCanvas` com WebGL2 (Safari só a partir da versão 17); manter o
+   *fallback* para a thread principal. Critério de aceite: TBT < 200 ms no Lighthouse
+   celular e nenhuma regressão de quadros/s nas três missões.
+7. **Fontes locais também na central** (`index.html` ainda usa o Google Fonts).
 
 ---
 
-## 11. Referências
+## 13. Referências
 
 Verificadas nesta sessão:
 
@@ -455,3 +670,10 @@ Referências bibliográficas clássicas (não reverificadas nesta sessão):
 - PETS 2006 — *Performance Evaluation of Tracking and Surveillance*, cenário de bagagem
   abandonada (regra 3 m / 30 s amplamente citada; a fonte primária estava fora do
   alcance de rede desta sessão).
+- Wilson, E. B. *Probable Inference, the Law of Succession, and Statistical Inference*.
+  JASA 22(158), 1927 (intervalo de confiança usado no avaliador; o teste confere o
+  valor de referência 5/6 → 0,436–0,970).
+- RFC 9110 — *HTTP Semantics*, §12.5.3 (Accept-Encoding, pesos q), §13.1.2
+  (If-None-Match, comparação fraca) e §15.4.5 (304).
+- W3C — *Web Content Accessibility Guidelines (WCAG) 2.2*, critérios 1.4.3 (contraste
+  mínimo) e 2.1.1 (teclado).
