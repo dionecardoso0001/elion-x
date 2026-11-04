@@ -23,10 +23,21 @@
      quadril fica alto em relação ao tornozelo.
    ─ MÃOS ERGUIDAS: os dois punhos acima do nariz por ≥ 2 s.
    ─ ANOMALIA: modelo estatístico de normalidade (anomalia.js).
+   ─ OBJETO DA CENA: objeto portátil que fica parado SEM dono desde que
+     apareceu (o notebook que sempre esteve na mesa) é CENÁRIO — não é
+     "esquecido". Esquecer exige alguém que trouxe ou estava junto.
+   ─ MOVIMENTO NO ESCURO (escuro.js): mancha de movimento persistente que
+     nenhuma pessoa/animal/veículo detectado explica — no escuro o detector
+     falha antes do sensor de movimento. Em zona restrita, crítico.
+   ─ ALTERAÇÃO PARADA / OBJETO ESQUECIDO DE QUALQUER TIPO (fundo duplo):
+     algo que mudou na cena e parou, mesmo sem classe no COCO (caixa,
+     jaqueta, ferramenta). O dono é quem passou por ali nos 10 s antes de
+     a alteração aparecer — o rastro das pessoas é guardado para isso.
    ═══════════════════════════════════════════════════════════════════════ */
 import { LIMIARES, CLASSES, rotulo } from './config.js';
 import { pontoNoPoligono, base, centro, iou, caixaDePontos, graus } from './geometria.js';
 import { ModeloNormalidade } from './anomalia.js';
+import { Rastreador } from './rastreador.js';
 
 const L = LIMIARES.vigilancia;
 const PORT = new Set(CLASSES.portateis), RISCO = new Set(CLASSES.risco);
@@ -66,25 +77,61 @@ export function maosErguidas(lm) {
   return lm[15].y < lm[0].y && lm[16].y < lm[0].y && lm[15].y < ombroY && lm[16].y < ombroY;
 }
 
+/** O centro da caixa `b` está dentro da caixa `a`? */
+const dentroDe = (a, b) => { const c = centro(b); return c.x >= a.x && c.x <= a.x + a.w && c.y >= a.y && c.y <= a.y + a.h; };
+
 export class AnalisadorVigilancia {
   constructor(cfg = {}) {
     this.cfg = { ...L, ...cfg };
     this.normalidade = new ModeloNormalidade(cfg.anomalia);
+    // manchas de movimento e alterações paradas ganham identidade como os alvos do detector
+    this.rMov = new Rastreador({ scoreNovo: 0, ttlMs: 700, iouMin: 0.1 });
+    this.rNovo = new Rastreador({ scoreNovo: 0, ttlMs: 5000, ttlEstaticoMs: 20000, iouMin: 0.15 });
     this.reiniciar();
   }
 
   reiniciar() {
     this.pessoas = new Map();
     this.objetos = new Map();
+    this.novos = new Map();      // alterações paradas (fundo duplo), por id
+    this.rastros = new Map();    // id da pessoa → pés nos últimos segundos (quem passou por onde)
     this.normalidade.reiniciar();
+    this.rMov.reiniciar(); this.rNovo.reiniciar();
   }
 
   ajustar(cfg) { Object.assign(this.cfg, cfg); }
 
-  processar({ t, trilhas, poses = [], zonas = [], aspecto = 16 / 9 }) {
+  /** Pessoa (id) que esteve a ≤ raio m da caixa entre t0 − janela e t0 + 1 s, ou null. */
+  #quemPassou(caixa, t0, aspecto) {
+    const c = centro(caixa);
+    let melhor = null, dMin = Infinity;
+    for (const [id, pts] of this.rastros) {
+      for (const p of pts) {
+        if (p.t < t0 - this.cfg.rastroJanelaS * 1000 || p.t > t0 + 1000) continue;
+        const dx = Math.abs(c.x - p.x) * aspecto;
+        const dy = Math.max(0, c.y - p.y, (p.y - p.h) - c.y);   // segmento vertical do corpo: pé até cabeça
+        const d = p.h > 1e-4 ? (Math.hypot(dx, dy) * this.cfg.alturaPessoaM) / p.h : Infinity;
+        if (d < dMin) { dMin = d; melhor = id; }
+      }
+    }
+    return dMin <= this.cfg.raioDonoNovoM ? melhor : null;
+  }
+
+  processar({ t, trilhas, poses = [], zonas = [], aspecto = 16 / 9, cena = null }) {
     const condicoes = [], eventos = [];
     const pessoas = trilhas.filter(tr => tr.classe === 'person' && tr.hits >= 3);
     const vivas = new Set(trilhas.map(tr => tr.id));
+    // rastro dos pés: mantido mesmo depois que a pessoa sai de cena (é ela quem "esqueceu")
+    for (const p of pessoas) {
+      const pe = base(p);
+      let r = this.rastros.get(p.id);
+      if (!r) { r = []; this.rastros.set(p.id, r); }
+      if (!r.length || t - r[r.length - 1].t >= 150) r.push({ t, x: pe.x, y: pe.y, h: p.h });
+    }
+    for (const [id, r] of this.rastros) {
+      while (r.length && t - r[0].t > (this.cfg.rastroJanelaS + 2) * 1000) r.shift();
+      if (!r.length) this.rastros.delete(id);
+    }
 
     // ── esqueletos → pessoas (associação gulosa por IoU) ──
     const posePorPessoa = new Map();
@@ -241,12 +288,16 @@ export class AnalisadorVigilancia {
         if (st.estado === 'movel') {
           st.estado = 'estatico';
           st.estaticoDesde = tr.estaticoDesde ?? t;
-          if (st.dono == null && maisPerto && dMin <= 1.5) st.dono = maisPerto.id;
+          if (st.dono == null && maisPerto && dMin <= 1.5) { st.dono = maisPerto.id; dDono = dMin; donoVivo = true; }
+          // parado desde que apareceu e ninguém por perto: é cenário (o notebook que sempre
+          // esteve na mesa), não objeto esquecido — senão toda sala vazia daria alarme em 30 s
+          if (st.dono == null) st.estado = 'cenario';
         }
-        const acompanhado = st.dono != null
+        const acompanhado = st.estado === 'cenario' || (st.dono != null
           ? donoVivo && dDono <= this.cfg.raioDonoM
-          : dMin <= this.cfg.raioDonoM;
-        if (acompanhado) {
+          : dMin <= this.cfg.raioDonoM);
+        if (st.estado === 'cenario') { st.semDonoDesde = null; }
+        else if (acompanhado) {
           if (st.estado === 'abandonado')
             eventos.push({ chave: `retorno:${tr.id}`, nivel: 'info', titulo: 'OBJETO VOLTOU A SER ACOMPANHADO', detalhe: `${nome} TGT-${tr.id}` });
           st.estado = 'estatico'; st.semDonoDesde = null; st.alertado = false;
@@ -279,6 +330,67 @@ export class AnalisadorVigilancia {
       this.objetos.delete(id);
     }
 
+    // ── sensor de movimento (fundo duplo) ──
+    const conhecidos = trilhas.filter(tr => tr.hits >= 2);
+    const explicada = cx => conhecidos.some(k => iou(k, cx) > 0.1 || dentroDe(k, cx));
+    const movimentos = [], novos = [], absorver = [];
+    if (cena) {
+      this.rMov.aspecto = aspecto; this.rNovo.aspecto = aspecto;
+      const mov = this.rMov.atualizar((cena.movimento || []).map(b => ({ classe: 'movimento', score: 1, ...b })), t);
+      for (const m of mov) {
+        if (m.hits < 3 || t - m.nasceu < this.cfg.movimentoMinS * 1000) continue;
+        const exp = explicada(m);
+        const zona = zonas.find(z => z.tipo === 'restrita' && pontoNoPoligono(base(m), z.pontos));
+        movimentos.push({ id: m.id, x: m.x, y: m.y, w: m.w, h: m.h, explicado: exp, zona: zona?.nome ?? null });
+        if (exp || !cena.escuro) continue;   // de dia o detector manda; o sensor de movimento cobre o escuro
+        if (zona) {
+          condicoes.push({ chave: `movzona:${zona.id}:${m.id}`, grupo: `movzona:${zona.id}`, nivel: 'critico',
+            titulo: `MOVIMENTO NO ESCURO EM ZONA RESTRITA: ${zona.nome}`,
+            detalhe: 'movimento persistente sem pessoa identificada pelo detector — pouca luz; verifique',
+            voz: `Alerta! Movimento no escuro na zona ${zona.nome}.` });
+        } else {
+          condicoes.push({ chave: `movimento:${m.id}`, grupo: 'movimento', nivel: 'aviso', titulo: 'MOVIMENTO NO ESCURO',
+            detalhe: `movimento persistente (${(m.w * 100).toFixed(0)}×${(m.h * 100).toFixed(0)}% do quadro) sem pessoa identificada — pouca luz`,
+            voz: 'Atenção, movimento detectado no escuro.' });
+        }
+      }
+
+      // alteração parada: objeto deixado (ou retirado) de QUALQUER tipo
+      const est = this.rNovo.atualizar((cena.estaticos || []).map(b => ({ classe: 'novo', score: 1, ...b })), t);
+      const vivosNovos = new Set();
+      for (const tr of est) {
+        vivosNovos.add(tr.id);
+        let st = this.novos.get(tr.id);
+        if (!st) { st = { nasceu: t, decidido: false, dono: null, semDonoDesde: null, alertadoEm: null }; this.novos.set(tr.id, st); }
+        // pessoa parada vira "alteração" no fundo duplo, e objeto conhecido do COCO já tem lógica própria
+        if (explicada(tr)) { st.semDonoDesde = null; continue; }
+        if (!st.decidido) {
+          if (tr.hits < 5 || (t - st.nasceu) / 1000 < this.cfg.novoConfirmarS) continue;
+          st.decidido = true;
+          st.dono = this.#quemPassou(tr, st.nasceu, aspecto);
+        }
+        const donoPerto = st.dono != null && pessoas.some(p => p.id === st.dono && distanciaObjetoPessoaM(tr, p, aspecto, this.cfg.alturaPessoaM) <= this.cfg.raioDonoM);
+        if (donoPerto) { st.semDonoDesde = null; st.alertadoEm = null; novos.push({ id: tr.id, x: tr.x, y: tr.y, w: tr.w, h: tr.h, estado: 'acompanhado', dono: st.dono, restanteS: null }); continue; }
+        if (st.semDonoDesde == null) st.semDonoDesde = t;
+        const passou = (t - st.semDonoDesde) / 1000;
+        const restanteS = Math.max(0, this.cfg.abandonoS - passou);
+        const estado = restanteS > 0 ? 'sem_dono' : 'alterado';
+        novos.push({ id: tr.id, x: tr.x, y: tr.y, w: tr.w, h: tr.h, estado, dono: st.dono, restanteS: restanteS > 0 ? restanteS : null });
+        if (estado !== 'alterado') continue;
+        if (st.alertadoEm == null) st.alertadoEm = t;
+        const teto = (st.dono != null ? this.cfg.esquecidoMaxS : this.cfg.alteracaoMaxS) * 1000;
+        if (t - st.alertadoEm > teto) { absorver.push({ x: tr.x, y: tr.y, w: tr.w, h: tr.h }); this.novos.delete(tr.id); continue; }
+        const zona = zonas.find(z => pontoNoPoligono(centro(tr), z.pontos));
+        condicoes.push(st.dono != null
+          ? { chave: `esquecido:${tr.id}`, grupo: 'esquecido', nivel: 'aviso', titulo: 'POSSÍVEL OBJETO ESQUECIDO',
+              detalhe: `algo ficou parado onde TGT-${st.dono} passou${zona ? ` (zona ${zona.nome})` : ''}, e ele se afastou há ${passou.toFixed(0)} s — objeto deixado ou retirado; verifique`,
+              voz: 'Atenção, possível objeto esquecido.' }
+          : { chave: `alteracao:${tr.id}`, grupo: 'alteracao', nivel: 'aviso', titulo: 'ALTERAÇÃO PARADA NA CENA',
+              detalhe: `objeto novo ou retirado${zona ? ` na zona ${zona.nome}` : ''}, sem pessoa vista por perto — há ${passou.toFixed(0)} s` });
+      }
+      for (const id of this.novos.keys()) if (!vivosNovos.has(id)) this.novos.delete(id);
+    }
+
     // ── objetos de risco (COCO: faca, taco, tesoura) ──
     for (const tr of trilhas) {
       if (!RISCO.has(tr.classe) || tr.hits < this.cfg.riscoHitsMin || tr.score < 0.5) continue;
@@ -302,8 +414,11 @@ export class AnalisadorVigilancia {
         semDono: resumoObjetos.filter(o => o.estado === 'sem_dono').length,
         poses: posePorPessoa.size,
         normalidade: { aquecido: this.normalidade.aquecido, amostras: this.normalidade.amostras, alvo: this.normalidade.cfg.aquecimentoAmostras },
+        escuro: !!cena?.escuro,
+        movimentos: movimentos.filter(m => !m.explicado).length,
+        alteracoes: novos.filter(n => n.estado === 'alterado').length,
       },
-      condicoes, eventos, pessoas: resumoPessoas, objetos: resumoObjetos,
+      condicoes, eventos, pessoas: resumoPessoas, objetos: resumoObjetos, movimentos, novos, absorver,
     };
   }
 }

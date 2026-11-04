@@ -182,6 +182,13 @@ export const LIMIARES = {
     maosAltoS: 2.0,
     aglomeracao: 6,
     riscoHitsMin: 4,
+    // sensor de movimento / fundo duplo (escuro.js)
+    movimentoMinS: 0.6,          // HEURÍSTICA — mancha precisa persistir para não ser cintilação
+    novoConfirmarS: 3,           // alteração parada só conta depois de estável por 3 s
+    rastroJanelaS: 10,           // quem passou pelo local nos 10 s antes de a alteração aparecer é o "dono"
+    raioDonoNovoM: 1.5,
+    alteracaoMaxS: 120,          // alteração sem dono: alerta por 2 min e é absorvida no fundo
+    esquecidoMaxS: 600,          // objeto esquecido: até 10 min de alerta
   },
 
   anomalia: {

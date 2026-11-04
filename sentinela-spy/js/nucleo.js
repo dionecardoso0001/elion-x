@@ -24,6 +24,7 @@ import { ClienteAgente, detectarServidor } from './spy/cliente.js';
 import { RegistroIncidentes } from './spy/incidentes.js';
 import { Percepcao, abrirCamera, listarCameras, preVoo } from './percepcao.js';
 import { nomeCamera, opcoesCameras, resumoCameras, diferencaCameras, proximaCamera, explicarErroCamera, selecionaveis } from './cameras.js';
+import { MonitorLuz, DetectorMovimento, CFG_MOVIMENTO, paraCinza, estatisticasLuz, aplicarCurvaRGBA } from './escuro.js';
 import { Sirene } from './sirene.js';
 import { HUD } from './hud.js';
 
@@ -43,7 +44,7 @@ const lerCfg = () => { try { return JSON.parse(localStorage.getItem(CHAVE_CFG)) 
 const cfg = Object.assign({
   modo: 'sentinela', zonas: [], roi: { ...LIMIARES.transito.roi }, fov: LIMIARES.transito.fovHorizontalGraus,
   volume: 0.9, voz: true, poses: true, calor: false, demo: false, gpsMov: true, espelhar: null, nv: false, cameras: {},
-  perfil: 'padrao',
+  perfil: 'padrao', realce: true, movimento: true,
 }, lerCfg());
 // preferências do agente (a CHAVE da API nunca entra aqui — fica em armazenamento separado, ver configurarAgente)
 cfg.agente = { modo: null, imagens: true, relatorioMin: 0, lembrar: false, token: '', ...(cfg.agente || {}) };
@@ -60,7 +61,10 @@ const E = {
   vigilancia: new AnalisadorVigilancia(),
   alertas: new GestorAlertas(),
   trilhas: [], poses: [], rosto: null, saida: null,
-  ultimo: { objetos: 0, pose: 0, relatorio: 0, dom: 0, auto: -Infinity },
+  ultimo: { objetos: 0, pose: 0, relatorio: 0, dom: 0, auto: -Infinity, luz: 0 },
+  // visão no escuro: luz medida, quadro realçado para os detectores, sensor de movimento
+  luz: new MonitorLuz(), mov: new DetectorMovimento(), cena: null,
+  cvLuz: null, cvRealce: null, realcadoEm: -1,
   tVideo: -1, fps: 0, quadrosEm: [], infMs: 0, errosSeguidos: 0,
   gps: { velocidade: null, precisao: null, em: null, watch: null, erro: null },
   zonaEdicao: null, gravador: null, composicao: null, evidencias: 0, analisando: false,
@@ -200,6 +204,7 @@ async function abrir(modo, { deviceId = cfg.cameras[modo] || null, facing = faci
   }
   E.stream?.getTracks().forEach(t => t.stop());
   E.stream = stream;
+  reiniciarEscuro();   // outra câmera = outra cena: o fundo aprendido não vale mais
   v.srcObject = stream;
   await v.play().catch(() => {});
   // proporção real do quadro: o CSS do celular dimensiona o visor por ela
@@ -311,7 +316,7 @@ function aplicarModoUI(modo) {
 }
 
 function reiniciarAnalise() {
-  E.rastreador.reiniciar(); E.motorista.reiniciar(); E.transito.reiniciar(); E.vigilancia.reiniciar();
+  E.rastreador.reiniciar(); E.motorista.reiniciar(); E.transito.reiniciar(); E.vigilancia.reiniciar(); reiniciarEscuro();
   E.trilhas = []; E.poses = []; E.rosto = null; E.saida = null;
   E.alertas.sincronizar([], agora() + 1e7);   // encerra condições do modo anterior
   E.sirene.desligar(); E.sirene.calar();
@@ -364,29 +369,85 @@ function laco() {
   if (t - E.ultimo.dom >= 250) { E.ultimo.dom = t; atualizarPaineis(t); }
 }
 
+/* ═════════════════ VISÃO NO ESCURO ═════════════════ */
+const ctx2d = cv => cv.getContext('2d', { willReadFrequently: true });
+
+/**
+ * ~10 Hz: mede a luz num quadro de 320 px e alimenta o sensor de movimento (só
+ * na vigilância — com a câmera andando, no carro, tudo "se move" e o fundo não
+ * existe). A curva de realce NÃO entra no sensor: ela muda devagar com a cena e
+ * isso viraria movimento falso; o piso do limiar é que se ajusta à faixa de luz.
+ */
+function amostrarLuz(v, t) {
+  if (t - E.ultimo.luz < 100) return;
+  E.ultimo.luz = t;
+  const W = 320, H = Math.max(1, Math.round((W * v.videoHeight) / v.videoWidth));
+  if (!E.cvLuz) E.cvLuz = document.createElement('canvas');
+  const cv = E.cvLuz;
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; E.cinza = new Uint8Array(W * H); }
+  const g = ctx2d(cv);
+  g.drawImage(v, 0, 0, W, H);
+  const cinza = paraCinza(g.getImageData(0, 0, W, H).data, W * H, E.cinza);
+  const antes = E.luz.escuro;
+  const luz = E.luz.atualizar(estatisticasLuz(cinza));
+  if (luz.escuro !== antes) {
+    logAgente({ nivel: luz.escuro ? 'aviso' : 'sistema', texto: luz.escuro
+      ? `◐ Pouca luz (${Math.round(luz.luz * 100)}%): realce automático ${cfg.realce ? 'LIGADO para a detecção' : 'desligado nas configurações'}${E.modo === 'sentinela' && cfg.movimento ? ' · sensor de movimento no escuro ativo' : ''}. Escuro total exige câmera infravermelha.`
+      : '◑ Luz normalizada — detecção na imagem original.' });
+  }
+  if (E.modo === 'sentinela' && cfg.movimento) {
+    const faixa = Math.max(1, E.luz.p.p98 - E.luz.p.p02);
+    const r = E.mov.processar(cinza, W, H, t, { difMin: Math.max(3, Math.round((CFG_MOVIMENTO.difMin * faixa) / 200)) });
+    if (r.trocaDeLuz) logAgente({ nivel: 'info', texto: '◑ Troca brusca de luz na cena — sensor de movimento reajustando (1,5 s).' });
+    E.cena = { escuro: luz.escuro, movimento: r.movimento, estaticos: r.estaticos, sigma: r.sigma };
+  } else E.cena = { escuro: luz.escuro, movimento: [], estaticos: [] };
+}
+
+/** Fonte para os detectores: o vídeo, ou — no escuro — o quadro realçado (uma vez por quadro). */
+function fonteDeteccao(v) {
+  if (!(cfg.realce && E.luz.escuro && E.luz.curva)) return v;
+  if (E.realcadoEm === E.tVideo && E.cvRealce) return E.cvRealce;
+  const W = Math.min(640, v.videoWidth), H = Math.max(1, Math.round((W * v.videoHeight) / v.videoWidth));
+  if (!E.cvRealce) E.cvRealce = document.createElement('canvas');
+  const cv = E.cvRealce;
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  const g = ctx2d(cv);
+  g.drawImage(v, 0, 0, W, H);
+  const img = g.getImageData(0, 0, W, H);
+  aplicarCurvaRGBA(img.data, E.luz.curva.lut);
+  g.putImageData(img, 0, 0);
+  E.realcadoEm = E.tVideo;
+  return cv;
+}
+
+function reiniciarEscuro() { E.mov.reiniciar(); E.luz.reiniciar(); E.cena = null; E.realcadoEm = -1; }
+
 function processar(v, t) {
   const t0 = performance.now();
   const aspecto = v.videoWidth / v.videoHeight;
   E.rastreador.aspecto = aspecto;
   const P = E.percepcao;
+  amostrarLuz(v, t);
+  const fonte = fonteDeteccao(v);
   let saida;
   if (E.modo === 'sentinela') {
-    if (t - E.ultimo.objetos >= 60) { E.ultimo.objetos = t; const d = P.objetos(v, t); if (d) E.trilhas = E.rastreador.atualizar(d, t); }
+    if (t - E.ultimo.objetos >= 60) { E.ultimo.objetos = t; const d = P.objetos(fonte, t); if (d) E.trilhas = E.rastreador.atualizar(d, t); }
     // aparelho lento: a pose cede espaço — objetos alimentam intrusão e abandono, que são prioridade
-    if (cfg.poses && P.tarefas.pose && t - E.ultimo.pose >= Math.max(110, 1.5 * E.infMs)) { E.ultimo.pose = t; E.poses = P.poses(v, t) || []; }
+    if (cfg.poses && P.tarefas.pose && t - E.ultimo.pose >= Math.max(110, 1.5 * E.infMs)) { E.ultimo.pose = t; E.poses = P.poses(fonte, t) || []; }
     if (!cfg.poses) E.poses = [];
-    saida = E.vigilancia.processar({ t, trilhas: E.trilhas, poses: E.poses, zonas: cfg.zonas, aspecto });
+    saida = E.vigilancia.processar({ t, trilhas: E.trilhas, poses: E.poses, zonas: cfg.zonas, aspecto, cena: cfg.movimento ? E.cena : null });
+    for (const b of saida.absorver || []) E.mov.absorver(b);   // alteração já alertada volta a ser fundo
   } else if (E.modo === 'motorista') {
-    E.rosto = P.rosto(v, t);
+    E.rosto = P.rosto(fonte, t);
     let celular = null;
     if (P.tarefas.objetos && t - E.ultimo.objetos >= 500) {
       E.ultimo.objetos = t;
-      celular = celularJuntoAoRosto(P.objetos(v, t) || [], E.rosto?.pontos);
+      celular = celularJuntoAoRosto(P.objetos(fonte, t) || [], E.rosto?.pontos);
     }
     E.trilhas = [];
-    saida = E.motorista.processar({ t, rosto: E.rosto, aspecto, celular, velocidade: cfg.gpsMov ? velocidadeGPS() : null });
+    saida = E.motorista.processar({ t, rosto: E.rosto, aspecto, celular, velocidade: cfg.gpsMov ? velocidadeGPS() : null, escuro: E.luz.escuro });
   } else {
-    if (t - E.ultimo.objetos >= 45) { E.ultimo.objetos = t; const d = P.objetos(v, t); if (d) E.trilhas = E.rastreador.atualizar(d, t); }
+    if (t - E.ultimo.objetos >= 45) { E.ultimo.objetos = t; const d = P.objetos(fonte, t); if (d) E.trilhas = E.rastreador.atualizar(d, t); }
     saida = E.transito.processar({ t, trilhas: E.trilhas, aspecto, velocidade: velocidadeGPS() });
   }
   E.infMs = 0.85 * E.infMs + 0.15 * (performance.now() - t0);
@@ -455,10 +516,12 @@ function desenhar(t) {
   const nivel = E.alertas.nivelAtual();
   E.hud.desenhar({
     modo: E.modo, agora: t, nivel, fps: E.fps, infMs: E.infMs, gravando: !!E.gravador, campo: E.campo.ativo,
+    luz: E.luz.media != null ? { ...E.luz.estado(), realce: cfg.realce } : null,
     trilhas: E.modo === 'motorista' ? [] : E.trilhas,
     sentinela: E.modo === 'sentinela' ? {
       zonas: cfg.zonas, zonaEdicao: E.zonaEdicao, poses: E.poses, mostrarPoses: cfg.poses,
       pessoas: s.pessoas, objetos: s.objetos, abandonoS: E.vigilancia.cfg.abandonoS,
+      movimentos: s.movimentos, novos: s.novos, escuro: E.luz.escuro,
       mostrarCalor: cfg.calor, calor: cfg.calor ? E.vigilancia.normalidade.mapaDeCalor() : null, grade: E.vigilancia.normalidade.cfg.grade,
     } : null,
     motorista: E.modo === 'motorista' ? { rosto: E.rosto, metricas: s.metricas } : null,
@@ -876,7 +939,15 @@ function atualizarPaineis(t) {
     add('esqueletos', `${m.poses ?? 0}`);
     const n = m.normalidade;
     add('modelo de normalidade', n ? (n.aquecido ? 'ATIVO' : `aprendendo ${Math.min(100, Math.round((100 * n.amostras) / n.alvo))}%`) : '—', '', true);
+    if (cfg.movimento) {
+      add('movimento sem explicação', `${m.movimentos ?? 0}`, m.movimentos && m.escuro ? 'aviso' : '');
+      add('alterações paradas', `${m.alteracoes ?? 0}`, m.alteracoes ? 'aviso' : '');
+    }
     if (cfg.demo) add('preset', 'DEMONSTRAÇÃO — tempos encurtados', 'aviso', true);
+  }
+  if (E.luz.media != null) {
+    const l = E.luz.estado();
+    add('luz da cena', `${Math.round(l.luz * 100)}%${l.escuro ? ` · NOTURNO${cfg.realce ? ` (realce ×${l.ganho.toFixed(1)})` : ''}` : ''}`, l.escuro ? 'aviso' : '', true);
   }
   add('perfil de sensibilidade', NOMES_PERFIL[cfg.perfil] || 'PADRÃO', cfg.perfil === 'padrao' ? '' : 'aviso', true);
   if (E.campo.ativo) {
@@ -895,6 +966,7 @@ function atualizarPaineis(t) {
   $('rInf').textContent = `${E.infMs.toFixed(0)} ms`;
   $('rBackend').textContent = MODELOS_POR_MODO[E.modo].map(k => `${k} ${E.percepcao?.backend[k] || '…'}`).join(' · ');
   $('rRuntime').textContent = E.percepcao?.fonte || '--';
+  $('rLuz').textContent = E.luz.media == null ? '--' : `${Math.round(E.luz.media * 100)}%${E.luz.escuro ? ' ◐ NOTURNO' : ''}`;
   $('rGps').textContent = E.gps.watch == null ? 'desligado' : E.gps.erro ? E.gps.erro : velocidadeGPS() != null ? `${(velocidadeGPS() * 3.6).toFixed(0)} km/h ±${Math.round(E.gps.precisao || 0)} m` : 'aguardando sinal';
 
   // relatório periódico do AGENTE (opcional, em minutos)
@@ -1133,6 +1205,8 @@ function ligarControles() {
   chk('chkCalor', 'calor');
   chk('chkDemo', 'demo', aplicarPerfil);
   chk('chkGPSmov', 'gpsMov');
+  chk('chkRealce', 'realce');
+  chk('chkMovimento', 'movimento', () => { E.mov.reiniciar(); E.cena = null; });
   renderZonas();
 
   $('btnRecalibrar').addEventListener('click', () => {

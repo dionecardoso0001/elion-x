@@ -188,6 +188,11 @@ export class HUD {
       g.fillText('● CAMPO', R.x + R.w - (e.gravando ? 90 : 16) * d, R.y + 16 * d);
       g.textAlign = 'left';
     }
+    if (e.luz?.escuro) {   // visão noturna: quem olha precisa saber que a detecção roda na imagem clareada
+      this.#fonte(11, 700); g.textBaseline = 'top'; g.textAlign = 'right'; g.fillStyle = C.aviso;
+      g.fillText(`◐ VISÃO NOTURNA · LUZ ${Math.round((e.luz.luz || 0) * 100)}%${e.luz.realce ? ` · REALCE ×${(e.luz.ganho || 1).toFixed(1)}` : ''}`, R.x + R.w - 16 * d, R.y + 34 * d);
+      g.textAlign = 'left';
+    }
   }
 
   /* ─────────── MODO SENTINELA ─────────── */
@@ -235,6 +240,33 @@ export class HUD {
       g.moveTo(c.x, c.y - 2 * r); g.lineTo(c.x, c.y - r / 2); g.moveTo(c.x, c.y + r / 2); g.lineTo(c.x, c.y + 2 * r);
       g.stroke();
       g.beginPath(); g.arc(c.x, c.y, r, 0, Math.PI * 2); g.stroke();
+    }
+    // sensor de movimento: só o que nenhum alvo detectado explica, e só no escuro
+    if (s.escuro) {
+      for (const m of s.movimentos || []) {
+        if (m.explicado) continue;
+        const r = this.caixa(m), cor = m.zona ? C.critico : C.aviso;
+        g.setLineDash([5 * d, 4 * d]); g.strokeStyle = cor; g.lineWidth = 1.5 * d;
+        g.strokeRect(r.x, r.y, r.w, r.h); g.setLineDash([]);
+        this.#placa(r.x, r.y, [m.zona ? `MOVIMENTO · ZONA ${m.zona}` : 'MOVIMENTO NO ESCURO'], cor);
+      }
+    }
+    // alteração parada (objeto deixado de qualquer tipo, pelo fundo duplo)
+    for (const n of s.novos || []) {
+      const r = this.caixa(n);
+      const cor = n.estado === 'acompanhado' ? C.ok : C.aviso;
+      const linhas = n.estado === 'acompanhado' ? [`OBJETO NOVO · DONO TGT-${n.dono}`]
+        : n.estado === 'sem_dono' ? [`OBJETO NOVO · ${n.dono != null ? `TGT-${n.dono} SAIU` : 'SEM DONO'}`, `◆ ${Math.ceil(n.restanteS ?? 0)} s`]
+        : [n.dono != null ? '▲ POSSÍVEL OBJETO ESQUECIDO' : '▲ ALTERAÇÃO PARADA'];
+      this.#colchetes(r, cor, 12, 2);
+      if (n.estado !== 'acompanhado') {
+        const cx = r.x + r.w / 2, cy = r.y + r.h / 2, raio = Math.max(r.w, r.h) * 0.75 + 8 * d;
+        const frac = n.estado === 'alterado' ? 1 : 1 - (n.restanteS ?? 0) / (s.abandonoS || 30);
+        g.strokeStyle = comAlfa(cor, 0.25); g.lineWidth = 3 * d;
+        g.beginPath(); g.arc(cx, cy, raio, 0, Math.PI * 2); g.stroke();
+        g.strokeStyle = cor; g.beginPath(); g.arc(cx, cy, raio, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2); g.stroke();
+      }
+      this.#placa(r.x, r.y, linhas, cor);
     }
     // esqueletos
     if (s.mostrarPoses) {

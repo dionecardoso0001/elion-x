@@ -189,11 +189,11 @@ export class Percepcao {
     return ts;
   }
 
-  /** Objetos → [{classe, score, x, y, w, h}] normalizados no quadro. */
+  /** Objetos → [{classe, score, x, y, w, h}] normalizados no quadro. A fonte pode ser o vídeo ou o quadro realçado (canvas). */
   objetos(video, t) {
     const det = this.tarefas.objetos;
     if (!det) return null;
-    const vw = video.videoWidth, vh = video.videoHeight;
+    const vw = video.videoWidth || video.width, vh = video.videoHeight || video.height;
     const r = det.detectForVideo(video, this.#ts('objetos', t));
     const out = [];
     for (const d of r.detections || []) {
