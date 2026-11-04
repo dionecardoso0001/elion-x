@@ -32,6 +32,9 @@ for (const d of PASTAS_PUBLICAS) if (fs.existsSync(path.join(RAIZ, d))) copiar(p
 for (const obrigatorio of ['index.html', 'plataforma.json', 'vendor/anthropic-sdk.mjs']) {
   if (!fs.existsSync(path.join(DIST, obrigatorio))) { console.error(`✗ falta ${obrigatorio} — rode npm run preparar antes`); process.exit(1); }
 }
+// hospedagem estática não tem /api/: o boot não sonda servidor (evita um 404 no console)
+const plat = JSON.parse(fs.readFileSync(path.join(DIST, 'plataforma.json'), 'utf8'));
+fs.writeFileSync(path.join(DIST, 'plataforma.json'), JSON.stringify({ ...plat, hospedagem: 'estatica' }, null, 2));
 // GitHub Pages: sem Jekyll (ele esconderia arquivos e pastas que começam com "_")
 fs.writeFileSync(path.join(DIST, '.nojekyll'), '');
 console.log(`  ✓ dist/ pronto: ${arquivos} arquivos, ${(bytes / 1048576).toFixed(1)} MB`);

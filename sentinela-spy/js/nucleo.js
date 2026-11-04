@@ -122,7 +122,8 @@ async function boot() {
   logBoot(persistente ? 'ok' : 'aviso', persistente
     ? `registro de incidentes · ${E.incidentes.itens.length} no histórico deste aparelho`
     : 'registro de incidentes só em memória (armazenamento do navegador bloqueado)');
-  E.servidorAgente = await detectarServidor();
+  // build estático (GitHub Pages) não tem servidor de agente: nem sonda
+  E.servidorAgente = E.status?.hospedagem === 'estatica' ? { disponivel: false } : await detectarServidor();
   configurarAgente();
   logBoot(E.agente.pronto ? 'ok' : 'aviso', textoEstadoAgente());
 
