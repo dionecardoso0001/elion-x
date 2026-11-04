@@ -15,7 +15,7 @@ const CASCA = [
   'js/inicio.js', 'js/nucleo.js', 'js/config.js', 'js/geometria.js', 'js/rastreador.js', 'js/motorista.js',
   'js/transito.js', 'js/vigilancia.js', 'js/anomalia.js', 'js/alertas.js', 'js/sirene.js', 'js/hud.js',
   'js/gravador.js', 'js/avaliacao.js', 'js/percepcao.js', 'js/agente.js',
-  'js/cameras.js', 'js/escuro.js', 'js/fauna.js', 'js/saude.js', 'js/escuta.js', 'js/spy/alerta.js',
+  'js/cameras.js', 'js/escuro.js', 'js/fauna.js', 'js/saude.js', 'js/escuta.js', 'js/spy/alerta.js', 'js/laboratorio.js', 'js/spy/labdb.js',
   'js/spy/cerebro.js', 'js/spy/cliente.js', 'js/spy/incidentes.js',
   'icones/icone.svg', 'icones/icone-192.png',
 ];

@@ -135,3 +135,17 @@ test('trânsito: achado da varredura (cobra) vira POSSÍVEL COBRA NA PISTA e con
   assert.equal(r.metricas.contagem.animal, 1);
   assert.equal(r.achados.length, 1);
 });
+
+test('classe do LABORATÓRIO: refino vence o ImageNet (foi o operador quem ensinou) e ladrilho confirma em 2 leituras', () => {
+  const f = new FaunaPista();
+  const veado = { conceito: { id: 'v1', nome: 'VEADO', porte: 'grande' }, similaridade: 0.81 };
+  f.registrarRefino(3, [{ nome: 'impala', score: 0.5 }], 0);
+  f.registrarRefinoPersonalizado(3, veado, 100);
+  const d = descreverAnimal('horse', f.refino(3));
+  assert.equal(d.nome, 'VEADO'); assert.equal(d.porte, 'grande'); assert.equal(d.refinado, true);
+  const caixa = { x: 0.4, y: 0.6, w: 0.2, h: 0.3 };
+  assert.equal(f.registrarLadrilhoPersonalizado(1, caixa, veado, 0), null);
+  assert.ok(f.registrarLadrilhoPersonalizado(1, caixa, veado, 300));
+  const a = f.achados(400);
+  assert.equal(a[0].nome, 'VEADO'); assert.equal(a[0].porte, 'grande'); assert.equal(a[0].fala, 'veado');
+});

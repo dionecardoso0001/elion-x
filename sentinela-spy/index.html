@@ -179,6 +179,13 @@
       <p class="dica">Celular no para-brisa, câmera traseira para a via. Alinhe o trapézio à sua faixa. Distâncias são estimativas monoculares (~).</p>
     </section>
 
+    <section class="painel" id="ctlLab">
+      <h2>◈ LABORATÓRIO DE MODELO</h2>
+      <p class="dica">Ensine com fotos suas: <b>locais restritos</b> (pessoa na cena vira intrusão) e <b>classes novas</b> que o modelo não conhece (ex.: VEADO, no trânsito).</p>
+      <div class="linha-btns"><button id="btnLab" class="btn" type="button">⚗ ABRIR LABORATÓRIO</button></div>
+      <p class="dica" id="labResumo" aria-live="polite"></p>
+    </section>
+
     <section class="painel" id="ctlCampo">
       <h2>◈ CALIBRAÇÃO DE CAMPO <span id="campoSelo" class="selo">PARADA</span></h2>
       <label class="campo">Perfil de sensibilidade
@@ -350,6 +357,50 @@
       <button type="button" class="btn" id="btnCancelarAlerta">✕ CANCELAR</button>
     </div>
   </form>
+</dialog>
+
+<!-- ▓▓ LABORATÓRIO DE MODELO ▓▓ -->
+<dialog id="dlgLab" aria-labelledby="labTitulo">
+  <div class="dlg lab">
+    <h2 id="labTitulo">⚗ LABORATÓRIO DE MODELO</h2>
+    <p class="dica"><b>LOCAL RESTRITO</b>: fotos de um lugar onde ninguém pode estar — quando a câmera vê esse lugar com uma pessoa, é intrusão. <b>CLASSE NOVA</b>: fotos de algo que o modelo não conhece (ex.: VEADO) — entra na varredura do trânsito. Use 10 ou mais fotos, de ângulos e luzes diferentes; acrescente fotos <b>negativas</b> (parecido, mas liberado) para afinar. Tudo fica só neste aparelho.</p>
+    <div class="lab-novo">
+      <label class="sr-only" for="labNome">Nome do novo conceito</label>
+      <input id="labNome" type="text" maxlength="40" placeholder="nome (ex.: SUBESTAÇÃO, VEADO)">
+      <label class="sr-only" for="labTipo">Tipo</label>
+      <select id="labTipo"><option value="local">local restrito</option><option value="classe">classe nova</option></select>
+      <label class="sr-only" for="labPorte">Porte da classe</label>
+      <select id="labPorte"><option value="grande">porte grande</option><option value="pequeno">porte pequeno</option></select>
+      <button id="btnLabCriar" class="btn btn-primario-sm" type="button">＋ CRIAR</button>
+    </div>
+    <ul id="labLista" class="lab-lista" aria-label="Conceitos ensinados"></ul>
+    <section id="labDetalhe" class="lab-detalhe" hidden aria-labelledby="labSelNome">
+      <h3 id="labSelNome"></h3>
+      <p id="labQualidade" class="dica"></p>
+      <label class="campo">Limiar de similaridade <output id="outLabLimiar"></output><input id="rngLabLimiar" type="range" min="30" max="97" step="1"></label>
+      <div class="linha-btns">
+        <button id="btnLabFotos" class="btn" type="button">⇪ FOTOS DO LOCAL/CLASSE</button>
+        <button id="btnLabNegativas" class="btn" type="button">⇪ FOTOS NEGATIVAS</button>
+        <button id="btnLabCapturar" class="btn" type="button">⌖ CAPTURAR DA CÂMERA</button>
+        <button id="btnLabCapturarNeg" class="btn" type="button">⌖ CAPTURAR COMO NEGATIVA</button>
+        <button id="btnLabTestar" class="btn" type="button">◎ TESTAR AGORA</button>
+        <button id="btnLabFalso" class="btn btn-aviso" type="button">✖ ÚLTIMO ALARME FOI FALSO</button>
+        <button id="btnLabAuto" class="btn" type="button">↺ LIMIAR AUTOMÁTICO</button>
+        <button id="btnLabExcluir" class="btn" type="button">⌫ EXCLUIR</button>
+      </div>
+      <input id="labArquivos" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden>
+      <input id="labArquivosNeg" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden>
+      <p id="labTeste" class="dica" aria-live="polite"></p>
+      <div id="labGaleria" class="lab-galeria" aria-label="Fotos de exemplo"></div>
+    </section>
+    <p id="labStatus" class="dica" role="status"></p>
+    <div class="linha-btns">
+      <button id="btnLabExportar" class="btn" type="button">⇩ EXPORTAR</button>
+      <button id="btnLabImportar" class="btn" type="button">⇧ IMPORTAR</button>
+      <input id="labImportar" type="file" accept="application/json,.json" hidden>
+      <button id="btnLabFechar" class="btn" type="button">✕ FECHAR</button>
+    </div>
+  </div>
 </dialog>
 
 <div id="srAlerta" class="sr-only" aria-live="assertive"></div>

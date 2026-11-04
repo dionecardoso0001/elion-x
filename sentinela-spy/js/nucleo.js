@@ -19,6 +19,8 @@ import { enviarAlerta, resumoEnvio, criarFila, releLiberado } from './spy/alerta
 import { ouvir, escutaDisponivel, liberarMicrofone } from './escuta.js';
 import { AnalisadorTransito, tipoDe } from './transito.js';
 import { FaunaPista, ladrilhosCorredor, recorteDistante, fundirDeteccoes } from './fauna.js';
+import { novoConceito, adicionarExemplo, removerExemplo, calibrar, reconhecer, melhorConceito, exportar, importar } from './laboratorio.js';
+import { BaseLab } from './spy/labdb.js';
 import { AnalisadorVigilancia } from './vigilancia.js';
 import { GestorAlertas } from './alertas.js';
 import { narrar, relatorioSituacao, montarTelemetria } from './agente.js';
@@ -67,7 +69,7 @@ const E = {
   vigilancia: new AnalisadorVigilancia(),
   alertas: new GestorAlertas(),
   trilhas: [], poses: [], rosto: null, saida: null,
-  ultimo: { objetos: 0, pose: 0, relatorio: 0, dom: 0, auto: -Infinity, luz: 0, fauna: 0 },
+  ultimo: { objetos: 0, pose: 0, relatorio: 0, dom: 0, auto: -Infinity, luz: 0, fauna: 0, local: 0 },
   // visão no escuro: luz medida, quadro realçado para os detectores, sensor de movimento
   luz: new MonitorLuz(), mov: new DetectorMovimento(), cena: null,
   cvLuz: null, cvRealce: null, realcadoEm: -1,
@@ -76,6 +78,9 @@ const E = {
   // checagem de saúde do motorista
   checagem: new ChecagemSaude({ escalarSemResposta: cfg.alerta.semResposta }), saude: null, filaSaude: Promise.resolve(),
   saudeGeracao: 0, escuta: null, servidorRele: false, filaAlertas: null,
+  // laboratório de modelo: conceitos ensinados com fotos e o local restrito reconhecido agora
+  lab: new BaseLab(), labSel: null, localAtivo: null, localSeq: 0, vetorCena: null, ultimoAlarmeLocal: null, carregandoEmbedder: null,
+  faunaVez: false,
   tVideo: -1, fps: 0, quadrosEm: [], infMs: 0, errosSeguidos: 0,
   gps: { velocidade: null, precisao: null, em: null, watch: null, erro: null },
   zonaEdicao: null, gravador: null, composicao: null, evidencias: 0, analisando: false,
@@ -133,6 +138,8 @@ async function boot() {
   } else {
     logBoot('aviso', 'instalação sem runtime local (plataforma.json ausente) — usando CDN e modelos do Google');
   }
+  const labOk = await E.lab.abrir();
+  logBoot(labOk ? 'ok' : 'aviso', `laboratório de modelo · ${E.lab.conceitos.length} conceito(s)${labOk ? '' : ' (só em memória: armazenamento bloqueado)'}`);
   const persistente = await E.incidentes.abrir();
   renderIncidentes();
   logBoot(persistente ? 'ok' : 'aviso', persistente
@@ -470,15 +477,29 @@ function faunaDoQuadro(fonte, t, aspecto) {
   if (t - E.ultimo.fauna >= 200) {
     E.ultimo.fauna = t;
     let feitas = 0;
+    // classes ensinadas no laboratório usam o embedder; alterna com o classificador para caber no orçamento
+    const comLab = E.lab.temAtivo('classe') && garantirEmbedder() && P.tarefas.embedder;
+    E.faunaVez = !E.faunaVez;
+    const usarLab = comLab && E.faunaVez;
     const animais = E.trilhas.filter(tr => tipoDe(tr.classe) === 'animal' && tr.hits >= 3 && E.fauna.precisaRefino(tr.id, t));
     for (const tr of animais.slice(0, 2)) {
-      const r = P.classificar(recortar(fonte, recorteQuadrado(tr, aspecto), 224));
-      if (r) E.fauna.registrarRefino(tr.id, r, t);
+      const img = recortar(fonte, recorteQuadrado(tr, aspecto), 224);
+      if (usarLab) {
+        const v = P.embedding(img);
+        const m = v && melhorConceito(E.lab.conceitos, v, 'classe');
+        if (m) E.fauna.registrarRefinoPersonalizado(tr.id, m, t); else { const r = P.classificar(img); if (r) E.fauna.registrarRefino(tr.id, r, t); }
+      } else { const r = P.classificar(img); if (r) E.fauna.registrarRefino(tr.id, r, t); }
       feitas++;
     }
     const lad = ladrilhosCorredor(E.transito.cfg.roi, aspecto);
     for (const i of E.fauna.proximosLadrilhos(lad.length, Math.max(0, 2 - feitas))) {
-      const r = P.classificar(recortar(fonte, lad[i], 224));
+      const img = recortar(fonte, lad[i], 224);
+      if (usarLab) {
+        const v = P.embedding(img);
+        const m = v && melhorConceito(E.lab.conceitos, v, 'classe');
+        if (m) { E.fauna.registrarLadrilhoPersonalizado(i, lad[i], m, t); continue; }
+      }
+      const r = P.classificar(img);
       if (r) E.fauna.registrarLadrilho(i, lad[i], r, t);
     }
     E.fauna.esquecer(new Set(E.trilhas.map(tr => tr.id)));
@@ -499,7 +520,13 @@ function processar(v, t) {
     // aparelho lento: a pose cede espaço — objetos alimentam intrusão e abandono, que são prioridade
     if (cfg.poses && P.tarefas.pose && t - E.ultimo.pose >= Math.max(110, 1.5 * E.infMs)) { E.ultimo.pose = t; E.poses = P.poses(fonte, t) || []; }
     if (!cfg.poses) E.poses = [];
-    saida = E.vigilancia.processar({ t, trilhas: E.trilhas, poses: E.poses, zonas: cfg.zonas, aspecto, cena: cfg.movimento ? E.cena : null });
+    reconhecerLocal(fonte, t);
+    saida = E.vigilancia.processar({ t, trilhas: E.trilhas, poses: E.poses, zonas: cfg.zonas, aspecto, cena: cfg.movimento ? E.cena : null, local: E.localAtivo });
+    const cl = saida.condicoes.find(c => c.chave.startsWith('local:'));
+    // guarda o quadro do alarme: "foi falso" vira exemplo NEGATIVO com um toque
+    if (cl && E.vetorCena && (!E.ultimoAlarmeLocal || E.ultimoAlarmeLocal.chave !== cl.chave || t - E.ultimoAlarmeLocal.t > 10000)) {
+      E.ultimoAlarmeLocal = { chave: cl.chave, conceitoId: E.localAtivo.conceito.id, vetor: E.vetorCena, t, miniatura: miniaturaDe(fonte) };
+    }
     for (const b of saida.absorver || []) E.mov.absorver(b);   // alteração já alertada volta a ser fundo
   } else if (E.modo === 'motorista') {
     E.rosto = P.rosto(fonte, t);
@@ -813,6 +840,210 @@ function configurarAlerta() {
   d.showModal();
 }
 
+/* ═════════════════ LABORATÓRIO DE MODELO ═════════════════ */
+const MODELO_EMBEDDING = 'mobilenet_v3_large';
+
+/** Carrega o embedder sob demanda (10 MB, SHA-256 conferido); devolve true se já está pronto. */
+function garantirEmbedder() {
+  if (E.percepcao?.tarefas.embedder) return true;
+  if (!E.percepcao?.mp || E.carregandoEmbedder) return false;
+  E.carregandoEmbedder = E.percepcao.garantir('embedder')
+    .then(() => { logAgente({ nivel: 'sistema', texto: '◈ Laboratório: modelo de características carregado — reconhecimento por fotos ativo.' }); renderLab(); })
+    .catch(e => logAgente({ nivel: 'aviso', texto: `Laboratório: não carregou o modelo de características (${e.message}).` }))
+    .finally(() => { E.carregandoEmbedder = null; });
+  return false;
+}
+
+/** ~1 Hz: a cena é um local restrito ensinado? Histerese: 2 leituras para entrar, 3 para sair. */
+function reconhecerLocal(fonte, t) {
+  if (!E.lab.temAtivo('local')) { E.localAtivo = null; return; }
+  if (t - E.ultimo.local < 1000 || !garantirEmbedder()) return;
+  E.ultimo.local = t;
+  const v = E.percepcao.embedding(fonte);
+  if (!v) return;
+  E.vetorCena = v;
+  const m = melhorConceito(E.lab.conceitos, v, 'local');
+  if (m) {
+    E.localSeq = Math.max(1, E.localSeq + 1);
+    if (E.localSeq >= 2 && (!E.localAtivo || E.localAtivo.conceito.id !== m.conceito.id)) {
+      logAgente({ nivel: 'sistema', texto: `◈ Local restrito reconhecido: ${m.conceito.nome} (similaridade ${(m.similaridade * 100).toFixed(0)}%) — pessoa na cena será intrusão.` });
+    }
+    if (E.localSeq >= 2) E.localAtivo = m;
+  } else {
+    E.localSeq = Math.min(-1, E.localSeq - 1);
+    if (E.localSeq <= -3 && E.localAtivo) { logAgente({ nivel: 'info', texto: `◈ Saiu do local restrito ${E.localAtivo.conceito.nome}.` }); E.localAtivo = null; }
+  }
+}
+
+/** Miniatura JPEG (≈96 px de altura) para a galeria e o retorno de falso alarme. */
+function miniaturaDe(fonte) {
+  const { W, H } = dimsDe(fonte);
+  if (!W || !H) return null;
+  const h = 96, w = Math.max(1, Math.round((W * h) / H));
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  cv.getContext('2d').drawImage(fonte, 0, 0, w, h);
+  return cv.toDataURL('image/jpeg', 0.6);
+}
+
+/** Vetor + miniatura de uma imagem (arquivo ou quadro da câmera). */
+async function exemploDe(origem) {
+  let img = origem;
+  if (origem instanceof Blob) {
+    const bmp = await createImageBitmap(origem);
+    const esc = Math.min(1, 640 / Math.max(bmp.width, bmp.height));
+    img = document.createElement('canvas');
+    img.width = Math.max(1, Math.round(bmp.width * esc)); img.height = Math.max(1, Math.round(bmp.height * esc));
+    img.getContext('2d').drawImage(bmp, 0, 0, img.width, img.height);
+    bmp.close?.();
+  }
+  const vetor = E.percepcao.embedding(img);
+  if (!vetor) throw new Error('o modelo de características não respondeu');
+  return { vetor, miniatura: miniaturaDe(img) };
+}
+
+async function prepararEmbedderComAviso() {
+  if (E.percepcao?.tarefas.embedder) return true;
+  $('labStatus').textContent = 'Carregando o modelo de características (10 MB, só na primeira vez)…';
+  garantirEmbedder();
+  try { await E.carregandoEmbedder; } catch { /* avisado no registro */ }
+  $('labStatus').textContent = E.percepcao?.tarefas.embedder ? '' : 'Não foi possível carregar o modelo de características.';
+  return !!E.percepcao?.tarefas.embedder;
+}
+
+const NOME_QUALIDADE = { insuficiente: 'INSUFICIENTE — mínimo de 3 fotos', baixa: 'BAIXA — fotos pouco consistentes ou negativas parecidas demais', boa: 'BOA', otima: 'ÓTIMA' };
+
+/** Resumo no painel (barato; roda a cada 2 s). Não toca no diálogo — re-renderizar lá tiraria o foco do teclado. */
+function renderResumoLab() {
+  const locais = E.lab.conceitos.filter(c => c.tipo === 'local').length, classes = E.lab.conceitos.length - locais;
+  $('labResumo').textContent = E.lab.conceitos.length
+    ? `${locais} local(is) restrito(s) · ${classes} classe(s) nova(s)${E.localAtivo ? ` · reconhecendo agora: ${E.localAtivo.conceito.nome}` : ''}`
+    : 'Nenhum conceito ensinado ainda.';
+}
+
+function renderLab() {
+  renderResumoLab();
+  if (!$('dlgLab').open) return;
+  $('labLista').replaceChildren(...E.lab.conceitos.map(c => {
+    const k = calibrar(c), li = document.createElement('li'), b = document.createElement('button');
+    b.type = 'button'; b.setAttribute('aria-pressed', String(c.id === E.labSel));
+    const nome = document.createElement('span'); nome.textContent = `${c.tipo === 'local' ? '⌂' : '◆'} ${c.nome}`;
+    const info = document.createElement('small'); info.textContent = `${k.positivos}+ / ${k.negativos}− · ${k.qualidade}`;
+    b.append(nome, info);
+    b.addEventListener('click', () => { E.labSel = c.id; renderLab(); });
+    li.append(b); return li;
+  }));
+  const c = E.lab.obter(E.labSel);
+  $('labDetalhe').hidden = !c;
+  if (!c) return;
+  const k = calibrar(c);
+  $('labSelNome').textContent = `${c.tipo === 'local' ? 'LOCAL RESTRITO' : `CLASSE NOVA (porte ${c.porte})`}: ${c.nome}`;
+  $('labQualidade').textContent = `Qualidade: ${NOME_QUALIDADE[k.qualidade]}${k.acerto != null ? ` · acerto na validação ${(k.acerto * 100).toFixed(0)}%` : ''}`
+    + `${k.simPositivos != null ? ` · fotos do mesmo ${c.tipo === 'local' ? 'local' : 'tipo'}: ${(k.simPositivos * 100).toFixed(0)}%` : ''}${k.simNegativos != null ? ` · negativas: ${(k.simNegativos * 100).toFixed(0)}%` : ''}`
+    + ` · limiar ${c.limiarManual ? 'manual' : 'automático'}.`;
+  $('rngLabLimiar').value = String(Math.round(c.limiar * 100)); $('outLabLimiar').textContent = `${Math.round(c.limiar * 100)}%`;
+  $('btnLabFalso').disabled = !(E.ultimoAlarmeLocal && E.ultimoAlarmeLocal.conceitoId === c.id);
+  $('labGaleria').replaceChildren(...c.exemplos.map(e => {
+    const f = document.createElement('figure'); f.className = e.rotulo;
+    if (e.miniatura) { const im = document.createElement('img'); im.src = e.miniatura; im.alt = `${e.rotulo} (${e.origem})`; f.append(im); }
+    const cap = document.createElement('figcaption'); cap.textContent = `${e.rotulo === 'negativo' ? '− negativa' : '+ positiva'}`;
+    const x = document.createElement('button'); x.type = 'button'; x.textContent = '✕'; x.setAttribute('aria-label', `remover foto ${e.rotulo}`);
+    x.addEventListener('click', async () => { removerExemplo(c, e.id); await E.lab.salvar(c); renderLab(); });
+    f.append(cap, x); return f;
+  }));
+}
+
+async function adicionarExemplos(origens, rotulo, origem) {
+  const c = E.lab.obter(E.labSel);
+  if (!c) { $('labStatus').textContent = 'Escolha (ou crie) um local ou classe na lista antes de enviar fotos.'; return; }
+  if (!origens.length) return;
+  if (!(await prepararEmbedderComAviso())) return;
+  let ok = 0, erros = 0;
+  for (const o of origens) {
+    try { const ex = await exemploDe(o); adicionarExemplo(c, { ...ex, rotulo, origem }); ok++; }
+    catch { erros++; }
+  }
+  await E.lab.salvar(c);
+  $('labStatus').textContent = `${ok} foto(s) ${rotulo === 'negativo' ? 'negativa(s) ' : ''}adicionada(s)${erros ? ` · ${erros} arquivo(s) não lido(s) — use JPEG, PNG ou WebP` : ''}.`;
+  renderLab();
+}
+
+function quadroAtual() {
+  const v = $('video');
+  if (!v.videoWidth) return null;
+  const cv = document.createElement('canvas'); cv.width = v.videoWidth; cv.height = v.videoHeight;
+  cv.getContext('2d').drawImage(v, 0, 0);
+  return cv;
+}
+
+function ligarLaboratorio() {
+  $('btnLab').addEventListener('click', () => { $('dlgLab').showModal(); renderLab(); });
+  $('btnLabFechar').addEventListener('click', () => $('dlgLab').close());
+  $('btnLabCriar').addEventListener('click', async () => {
+    try {
+      const c = novoConceito({ nome: $('labNome').value, tipo: $('labTipo').value, porte: $('labPorte').value });
+      await E.lab.salvar(c); E.labSel = c.id; $('labNome').value = '';
+      $('labStatus').textContent = `${c.nome} criado. Agora envie as fotos.`;
+      renderLab();
+    } catch (e) { $('labStatus').textContent = e.message; }
+  });
+  $('btnLabFotos').addEventListener('click', () => $('labArquivos').click());
+  $('btnLabNegativas').addEventListener('click', () => $('labArquivosNeg').click());
+  $('labArquivos').addEventListener('change', async ev => { await adicionarExemplos([...ev.target.files], 'positivo', 'arquivo'); ev.target.value = ''; });
+  $('labArquivosNeg').addEventListener('change', async ev => { await adicionarExemplos([...ev.target.files], 'negativo', 'arquivo'); ev.target.value = ''; });
+  const capturar = rotulo => { const q = quadroAtual(); if (!q) { $('labStatus').textContent = 'Inicie a operação para capturar da câmera.'; return; } adicionarExemplos([q], rotulo, 'camera'); };
+  $('btnLabCapturar').addEventListener('click', () => capturar('positivo'));
+  $('btnLabCapturarNeg').addEventListener('click', () => capturar('negativo'));
+  $('btnLabTestar').addEventListener('click', async () => {
+    const c = E.lab.obter(E.labSel), q = quadroAtual();
+    if (!c || !q) { $('labTeste').textContent = 'Inicie a operação e escolha um conceito para testar.'; return; }
+    if (!(await prepararEmbedderComAviso())) return;
+    const r = reconhecer(c, E.percepcao.embedding(q));
+    $('labTeste').textContent = `Quadro atual: similaridade ${(r.similaridade * 100).toFixed(0)}% (limiar ${(r.limiar * 100).toFixed(0)}%${r.negativo ? `, negativa mais parecida ${(r.negativo * 100).toFixed(0)}%` : ''}) → ${r.ok ? `RECONHECIDO como ${c.nome}` : 'não reconhecido'}.`;
+  });
+  $('btnLabFalso').addEventListener('click', async () => {
+    const c = E.lab.obter(E.labSel), a = E.ultimoAlarmeLocal;
+    if (!c || !a || a.conceitoId !== c.id) return;
+    adicionarExemplo(c, { vetor: a.vetor, rotulo: 'negativo', miniatura: a.miniatura, origem: 'retorno' });
+    await E.lab.salvar(c); E.ultimoAlarmeLocal = null;
+    $('labStatus').textContent = `O quadro do último alarme virou exemplo NEGATIVO de ${c.nome} — a mesma cena não dispara de novo.`;
+    logAgente({ nivel: 'sistema', texto: `◈ Laboratório: falso alarme de ${c.nome} registrado como exemplo negativo.` });
+    renderLab();
+  });
+  $('rngLabLimiar').addEventListener('input', async ev => {
+    const c = E.lab.obter(E.labSel); if (!c) return;
+    c.limiar = Number(ev.target.value) / 100; c.limiarManual = true;
+    $('outLabLimiar').textContent = `${ev.target.value}%`;
+    await E.lab.salvar(c);
+  });
+  $('btnLabAuto').addEventListener('click', async () => {
+    const c = E.lab.obter(E.labSel); if (!c) return;
+    c.limiarManual = false; c.limiar = calibrar(c).limiar; await E.lab.salvar(c); renderLab();
+  });
+  $('btnLabExcluir').addEventListener('click', async () => {
+    const c = E.lab.obter(E.labSel); if (!c) return;
+    if (!confirm(`Excluir ${c.nome} e todas as fotos de exemplo?`)) return;
+    await E.lab.excluir(c.id); E.labSel = null;
+    if (E.localAtivo?.conceito.id === c.id) E.localAtivo = null;
+    renderLab();
+  });
+  $('btnLabExportar').addEventListener('click', () => {
+    baixar(new Blob([JSON.stringify(exportar(E.lab.conceitos, MODELO_EMBEDDING))], { type: 'application/json' }), `sentinela-laboratorio-${carimbo()}.json`);
+  });
+  $('btnLabImportar').addEventListener('click', () => $('labImportar').click());
+  $('labImportar').addEventListener('change', async ev => {
+    const f = ev.target.files[0]; ev.target.value = '';
+    if (!f) return;
+    try {
+      if (f.size > 20 * 2 ** 20) throw new Error('arquivo grande demais');
+      const novos = importar(JSON.parse(await f.text()), MODELO_EMBEDDING);
+      for (const c of novos) await E.lab.salvar(c);
+      $('labStatus').textContent = `${novos.length} conceito(s) importado(s).`;
+      renderLab();
+    } catch (e) { $('labStatus').textContent = `Importação recusada: ${e.message}`; }
+  });
+  renderLab();
+}
+
 /* ═════════════════ DESENHO ═════════════════ */
 function desenhar(t) {
   if (!E.hud) return;
@@ -826,6 +1057,7 @@ function desenhar(t) {
       zonas: cfg.zonas, zonaEdicao: E.zonaEdicao, poses: E.poses, mostrarPoses: cfg.poses,
       pessoas: s.pessoas, objetos: s.objetos, abandonoS: E.vigilancia.cfg.abandonoS,
       movimentos: s.movimentos, novos: s.novos, escuro: E.luz.escuro,
+      local: E.localAtivo ? { nome: E.localAtivo.conceito.nome, similaridade: E.localAtivo.similaridade } : null,
       mostrarCalor: cfg.calor, calor: cfg.calor ? E.vigilancia.normalidade.mapaDeCalor() : null, grade: E.vigilancia.normalidade.cfg.grade,
     } : null,
     motorista: E.modo === 'motorista' ? { rosto: E.rosto, metricas: s.metricas } : null,
@@ -1270,6 +1502,7 @@ function atualizarPaineis(t) {
   $('rInf').textContent = `${E.infMs.toFixed(0)} ms`;
   $('rBackend').textContent = MODELOS_POR_MODO[E.modo].map(k => `${k} ${E.percepcao?.backend[k] || '…'}`).join(' · ');
   $('rRuntime').textContent = E.percepcao?.fonte || '--';
+  if (E.ultimo.lab == null || t - E.ultimo.lab > 2000) { E.ultimo.lab = t; renderResumoLab(); }
   $('rLuz').textContent = E.luz.media == null ? '--' : `${Math.round(E.luz.media * 100)}%${E.luz.escuro ? ' ◐ NOTURNO' : ''}`;
   $('rGps').textContent = E.gps.watch == null ? 'desligado' : E.gps.erro ? E.gps.erro : velocidadeGPS() != null ? `${(velocidadeGPS() * 3.6).toFixed(0)} km/h ±${Math.round(E.gps.precisao || 0)} m` : 'aguardando sinal';
 
@@ -1679,5 +1912,6 @@ function anotar(rotulo) {
 if (new URLSearchParams(location.search).has('debug')) window.SPY = { E, cfg, checagem: motivo => iniciarChecagem(motivo, null) };
 
 ligarControles();
+ligarLaboratorio();
 observarCameras();
 boot().catch(e => erroBoot(e.message));

@@ -117,7 +117,10 @@ export class AnalisadorVigilancia {
     return dMin <= this.cfg.raioDonoNovoM ? melhor : null;
   }
 
-  processar({ t, trilhas, poses = [], zonas = [], aspecto = 16 / 9, cena = null }) {
+  /**
+   * @param {object} [o.local]  local restrito reconhecido pela cena (laboratório): { conceito, similaridade }
+   */
+  processar({ t, trilhas, poses = [], zonas = [], aspecto = 16 / 9, cena = null, local = null }) {
     const condicoes = [], eventos = [];
     const pessoas = trilhas.filter(tr => tr.classe === 'person' && tr.hits >= 3);
     const vivas = new Set(trilhas.map(tr => tr.id));
@@ -399,6 +402,14 @@ export class AnalisadorVigilancia {
         titulo: `OBJETO DE RISCO: ${rotulo(tr.classe)}`,
         detalhe: `${empunhado ? 'junto ao corpo de uma pessoa' : 'na cena'} — confiança ${(tr.score * 100).toFixed(0)}%, verifique (detector genérico erra)`,
         voz: empunhado ? `Alerta! Possível ${rotulo(tr.classe).toLowerCase()} na mão de uma pessoa.` : null, alvo: tr.id });
+    }
+
+    // ── local restrito ensinado com fotos (laboratório): a CENA é o local e há gente nela ──
+    if (local?.conceito && pessoas.length) {
+      condicoes.push({ chave: `local:${local.conceito.id}`, grupo: `local:${local.conceito.id}`, nivel: 'critico',
+        titulo: `INTRUSÃO EM LOCAL RESTRITO: ${local.conceito.nome}`,
+        detalhe: `cena reconhecida pelas fotos de referência (similaridade ${(local.similaridade * 100).toFixed(0)}%) com ${pessoas.length} pessoa(s)`,
+        voz: `Alerta! Pessoa no local restrito ${local.conceito.nome}.`, alvo: pessoas[0].id });
     }
 
     if (pessoas.length >= this.cfg.aglomeracao) {

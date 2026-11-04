@@ -241,6 +241,17 @@ export class HUD {
       g.stroke();
       g.beginPath(); g.arc(c.x, c.y, r, 0, Math.PI * 2); g.stroke();
     }
+    // local restrito reconhecido pela cena (laboratório)
+    if (s.local) {
+      const R = this.rect;
+      this.#fonte(12, 800); g.textAlign = 'center'; g.textBaseline = 'top';
+      const txt = `⌂ LOCAL RESTRITO: ${s.local.nome} · ${(s.local.similaridade * 100).toFixed(0)}%`;
+      const w = g.measureText(txt).width + 20 * d;
+      g.fillStyle = comAlfa(C.critico, 0.22); g.fillRect(R.x + R.w / 2 - w / 2, R.y + 36 * d, w, 22 * d);
+      g.strokeStyle = C.critico; g.lineWidth = 1.5 * d; g.strokeRect(R.x + R.w / 2 - w / 2, R.y + 36 * d, w, 22 * d);
+      g.fillStyle = C.critico; g.fillText(txt, R.x + R.w / 2, R.y + 40 * d);
+      g.textAlign = 'left';
+    }
     // sensor de movimento: só o que nenhum alvo detectado explica, e só no escuro
     if (s.escuro) {
       for (const m of s.movimentos || []) {

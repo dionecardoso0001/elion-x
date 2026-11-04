@@ -258,3 +258,14 @@ test('ALTERAÇÃO PARADA: depois do teto de alerta, a região é devolvida para 
   assert.ok(pedidos[0].t >= 6000 && pedidos[0].t <= 6300, `pedido em ${pedidos[0].t} ms`);
   assert.deepEqual(pedidos[0].b, { x: caixa.x, y: caixa.y, w: caixa.w, h: caixa.h });
 });
+
+test('LOCAL RESTRITO ensinado com fotos: cena reconhecida + pessoa → intrusão crítica; cena vazia → nada', () => {
+  const local = { conceito: { id: 'c1', nome: 'SUBESTAÇÃO' }, similaridade: 0.87 };
+  const a = new AnalisadorVigilancia();
+  let r = rodar(a, 0, 500, () => ({ trilhas: [trilha(1, 'person', 0.4, 0.3, 0.06, 0.4)] }));
+  r = a.processar({ t: 600, trilhas: [trilha(1, 'person', 0.4, 0.3, 0.06, 0.4)], zonas: [], aspecto: ASPECTO, local });
+  const c = r.condicoes.find(x => x.chave === 'local:c1');
+  assert.ok(c && c.nivel === 'critico'); assert.match(c.titulo, /SUBESTAÇÃO/); assert.match(c.detalhe, /87%/);
+  const vazio = new AnalisadorVigilancia().processar({ t: 0, trilhas: [], zonas: [], aspecto: ASPECTO, local });
+  assert.ok(!vazio.condicoes.some(x => x.chave.startsWith('local:')));
+});

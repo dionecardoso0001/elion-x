@@ -142,6 +142,8 @@ export function categoriaDe(resultados) {
 
 /** Nome e porte para exibir, combinando a classe do COCO e o refino (quando confiável). */
 export function descreverAnimal(classeCoco, refino = null) {
+  // classe ensinada no laboratório (fotos do operador): nome e porte vêm dela
+  if (refino?.nome) return { nome: refino.nome, fala: refino.nome.toLowerCase(), porte: refino.porte === 'pequeno' ? 'pequeno' : 'grande', categoria: refino.categoria, refinado: true, score: refino.score };
   if (refino && CATEGORIAS[refino.categoria]) return { ...CATEGORIAS[refino.categoria], categoria: refino.categoria, refinado: true, score: refino.score };
   const c = CATEGORIA_COCO[classeCoco];
   if (c && CATEGORIAS[c]) return { ...CATEGORIAS[c], categoria: c, refinado: false };
@@ -252,7 +254,14 @@ export class FaunaPista {
 
   refino(id) {
     const r = this.refinos.get(id);
-    return r && r.categoria ? { categoria: r.categoria, score: r.score } : null;
+    if (!r || !r.categoria) return null;
+    return r.nome ? { categoria: r.categoria, score: r.score, nome: r.nome, porte: r.porte } : { categoria: r.categoria, score: r.score };
+  }
+
+  /** Refino por classe do LABORATÓRIO (similaridade de embedding) — vence o ImageNet: foi o operador quem ensinou. */
+  registrarRefinoPersonalizado(id, achado, t) {
+    if (!achado) return;
+    this.refinos.set(id, { categoria: `lab:${achado.conceito.id}`, score: achado.similaridade, nome: achado.conceito.nome, porte: achado.conceito.porte, em: t });
   }
 
   esquecer(vivos) { for (const id of this.refinos.keys()) if (!vivos.has(id)) this.refinos.delete(id); }
@@ -274,13 +283,24 @@ export class FaunaPista {
     return seguidas >= this.cfg.confirmacoes ? this.ladrilhos.get(indice) : null;
   }
 
+  /** Ladrilho reconhecido por classe do LABORATÓRIO; mesma regra de 2 leituras seguidas. */
+  registrarLadrilhoPersonalizado(indice, caixa, achado, t) {
+    if (!achado) return null;
+    const categoria = `lab:${achado.conceito.id}`;
+    const ant = this.ladrilhos.get(indice);
+    const seguidas = ant && ant.categoria === categoria && t - ant.em <= this.cfg.janelaMs ? ant.seguidas + 1 : 1;
+    this.ladrilhos.set(indice, { categoria, score: achado.similaridade, seguidas, em: t, caixa,
+      nome: achado.conceito.nome, fala: achado.conceito.nome.toLowerCase(), porte: achado.conceito.porte });
+    return seguidas >= this.cfg.confirmacoes ? this.ladrilhos.get(indice) : null;
+  }
+
   /** Achados confirmados e ainda recentes. */
   achados(t) {
     const out = [];
     for (const [indice, l] of this.ladrilhos) {
       if (l.seguidas < this.cfg.confirmacoes) continue;
       if (t - l.em > this.cfg.janelaMs) { this.ladrilhos.delete(indice); continue; }
-      out.push({ indice, ...l, ...CATEGORIAS[l.categoria] });
+      out.push({ indice, ...(CATEGORIAS[l.categoria] || {}), ...l });
     }
     return out;
   }
