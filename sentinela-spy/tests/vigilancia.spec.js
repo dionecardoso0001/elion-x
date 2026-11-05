@@ -182,3 +182,90 @@ test('AGLOMERAÇÃO a partir de 6 pessoas', () => {
   const r = rodar(a, 0, 200, () => ({ trilhas: Array.from({ length: 6 }, (_, k) => trilha(k + 1, 'person', 0.1 * k, 0.3, 0.05, 0.3)) }));
   assert.ok(tem(r, 'aglomeracao', 'aviso'));
 });
+
+/* ── objeto da cena, movimento no escuro e alteração parada (fundo duplo) ── */
+const rodarCena = (a, de, ate, cena, zonas = []) => {
+  let r; const eventos = [];
+  for (let t = de; t <= ate; t += 100) {
+    const c = cena(t);
+    r = a.processar({ t, trilhas: c.trilhas || [], zonas, aspecto: ASPECTO, cena: c.cena || null });
+    eventos.push(...r.eventos);
+  }
+  return { ...r, eventos };
+};
+
+test('CENÁRIO: notebook parado desde o início numa sala vazia NÃO é objeto esquecido', () => {
+  const a = new AnalisadorVigilancia({ abandonoS: 2 });
+  const r = rodar(a, 0, 6000, () => ({ trilhas: [trilha(7, 'laptop', 0.4, 0.6, 0.08, 0.06, { estatico: true, estaticoDesde: 0 })] }));
+  assert.ok(!tem(r, 'abandono'), JSON.stringify(r.condicoes));
+  assert.equal(r.objetos.find(o => o.id === 7).estado, 'cenario');
+});
+
+test('MOVIMENTO NO ESCURO: mancha persistente sem pessoa → aviso; em zona restrita → crítico; de dia, nada', () => {
+  const blob = { x: 0.2, y: 0.3, w: 0.05, h: 0.2, area: 0.01 };
+  let a = new AnalisadorVigilancia();
+  let r = rodarCena(a, 0, 1500, () => ({ cena: { escuro: true, movimento: [blob], estaticos: [] } }));
+  assert.ok(tem(r, 'movimento:', 'aviso'), JSON.stringify(r.condicoes));
+  a = new AnalisadorVigilancia();
+  r = rodarCena(a, 0, 1500, () => ({ cena: { escuro: true, movimento: [{ ...blob, x: 0.7, y: 0.6 }], estaticos: [] } }), [ZONA]);
+  assert.ok(tem(r, 'movzona:z1', 'critico'), JSON.stringify(r.condicoes));
+  a = new AnalisadorVigilancia();
+  r = rodarCena(a, 0, 1500, () => ({ cena: { escuro: false, movimento: [blob], estaticos: [] } }));
+  assert.ok(!tem(r, 'mov'), 'de dia o detector de pessoas é quem decide');
+  // pessoa detectada explica o movimento
+  a = new AnalisadorVigilancia();
+  r = rodarCena(a, 0, 1500, () => ({ trilhas: [trilha(1, 'person', 0.19, 0.28, 0.07, 0.25)], cena: { escuro: true, movimento: [blob], estaticos: [] } }));
+  assert.ok(!tem(r, 'movimento:'), JSON.stringify(r.condicoes));
+  assert.equal(r.movimentos[0].explicado, true);
+});
+
+test('ALTERAÇÃO PARADA: objeto de qualquer tipo deixado onde alguém passou → POSSÍVEL OBJETO ESQUECIDO quando a pessoa se afasta', () => {
+  const a = new AnalisadorVigilancia({ abandonoS: 2 });
+  const caixa = { x: 0.32, y: 0.78, w: 0.05, h: 0.06, area: 0.003 };
+  // a pessoa passa junto ao local (0–2 s), a alteração aparece (2 s) e a pessoa vai embora
+  const pessoaX = t => (t < 2000 ? 0.30 : Math.min(0.9, 0.30 + ((t - 2000) / 2000) * 0.6));
+  const cena = t => ({
+    trilhas: t < 4500 ? [trilha(1, 'person', pessoaX(t), 0.45, 0.06, 0.40)] : [],
+    cena: { escuro: false, movimento: [], estaticos: t >= 2000 ? [caixa] : [] },
+  });
+  const r = rodarCena(a, 0, 11000, cena);
+  const c = r.condicoes.find(x => x.chave.startsWith('esquecido:'));
+  assert.ok(c && c.nivel === 'aviso', JSON.stringify(r.condicoes));
+  assert.match(c.detalhe, /TGT-1/);
+  assert.equal(r.novos[0].dono, 1);
+});
+
+test('ALTERAÇÃO PARADA sem ninguém por perto → aviso de alteração; pessoa parada no lugar não conta', () => {
+  let a = new AnalisadorVigilancia({ abandonoS: 2 });
+  const caixa = { x: 0.6, y: 0.2, w: 0.05, h: 0.05, area: 0.0025 };
+  let r = rodarCena(a, 0, 7000, () => ({ cena: { escuro: true, movimento: [], estaticos: [caixa] } }));
+  assert.ok(tem(r, 'alteracao:', 'aviso'), JSON.stringify(r.condicoes));
+  a = new AnalisadorVigilancia({ abandonoS: 2 });
+  r = rodarCena(a, 0, 7000, () => ({ trilhas: [trilha(3, 'person', 0.58, 0.15, 0.08, 0.4)], cena: { escuro: false, movimento: [], estaticos: [caixa] } }));
+  assert.ok(!tem(r, 'alteracao') && !tem(r, 'esquecido'), 'a pessoa parada é que "mudou" a cena');
+});
+
+test('ALTERAÇÃO PARADA: depois do teto de alerta, a região é devolvida para o fundo (absorver)', () => {
+  const a = new AnalisadorVigilancia({ abandonoS: 1, alteracaoMaxS: 2 });
+  const caixa = { x: 0.6, y: 0.2, w: 0.05, h: 0.05, area: 0.0025 };
+  const pedidos = [];
+  for (let t = 0; t <= 8000; t += 100) {
+    const r = a.processar({ t, trilhas: [], zonas: [], aspecto: ASPECTO, cena: { escuro: false, movimento: [], estaticos: [caixa] } });
+    for (const b of r.absorver) pedidos.push({ t, b });
+  }
+  // confirma em 3 s, vira alerta em 4 s (abandono 1 s) e é devolvida após 2 s de alerta
+  assert.ok(pedidos.length >= 1, 'pediu para absorver a região');
+  assert.ok(pedidos[0].t >= 6000 && pedidos[0].t <= 6300, `pedido em ${pedidos[0].t} ms`);
+  assert.deepEqual(pedidos[0].b, { x: caixa.x, y: caixa.y, w: caixa.w, h: caixa.h });
+});
+
+test('LOCAL RESTRITO ensinado com fotos: cena reconhecida + pessoa → intrusão crítica; cena vazia → nada', () => {
+  const local = { conceito: { id: 'c1', nome: 'SUBESTAÇÃO' }, similaridade: 0.87 };
+  const a = new AnalisadorVigilancia();
+  let r = rodar(a, 0, 500, () => ({ trilhas: [trilha(1, 'person', 0.4, 0.3, 0.06, 0.4)] }));
+  r = a.processar({ t: 600, trilhas: [trilha(1, 'person', 0.4, 0.3, 0.06, 0.4)], zonas: [], aspecto: ASPECTO, local });
+  const c = r.condicoes.find(x => x.chave === 'local:c1');
+  assert.ok(c && c.nivel === 'critico'); assert.match(c.titulo, /SUBESTAÇÃO/); assert.match(c.detalhe, /87%/);
+  const vazio = new AnalisadorVigilancia().processar({ t: 0, trilhas: [], zonas: [], aspecto: ASPECTO, local });
+  assert.ok(!vazio.condicoes.some(x => x.chave.startsWith('local:')));
+});

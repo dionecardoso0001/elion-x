@@ -153,16 +153,19 @@ export class Percepcao {
   }
 
   async #criar(chave, buf) {
-    const { ObjectDetector, FaceLandmarker, PoseLandmarker } = this.mp;
+    const { ObjectDetector, FaceLandmarker, PoseLandmarker, ImageClassifier, ImageEmbedder } = this.mp;
     const opcoes = delegate => {
       const baseOptions = { modelAssetBuffer: buf, delegate };
       if (chave === 'objetos') return { baseOptions, runningMode: 'VIDEO', scoreThreshold: LIMIARES.deteccao.scoreMin, maxResults: 25 };
       if (chave === 'rosto') return { baseOptions, runningMode: 'VIDEO', numFaces: 1, outputFaceBlendshapes: true,
         outputFacialTransformationMatrixes: false, minFaceDetectionConfidence: 0.5, minFacePresenceConfidence: 0.5, minTrackingConfidence: 0.5 };
+      // recortes e ladrilhos são imagens soltas, sem continuidade temporal: modo IMAGE
+      if (chave === 'classificador') return { baseOptions, runningMode: 'IMAGE', maxResults: 8, scoreThreshold: 0.02 };
+      if (chave === 'embedder') return { baseOptions, runningMode: 'IMAGE', l2Normalize: true, quantize: false };
       return { baseOptions, runningMode: 'VIDEO', numPoses: 3, minPoseDetectionConfidence: 0.5,
         minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5, outputSegmentationMasks: false };
     };
-    const Classe = chave === 'objetos' ? ObjectDetector : chave === 'rosto' ? FaceLandmarker : PoseLandmarker;
+    const Classe = { objetos: ObjectDetector, rosto: FaceLandmarker, classificador: ImageClassifier, embedder: ImageEmbedder }[chave] || PoseLandmarker;
     // CPU quando a GPU é por software, ou por ordem do operador (?cpu=1): alguns
     // drivers de GPU de celular travam ou erram — precisa haver saída sem editar código
     if (this.soCPU) {
@@ -189,11 +192,11 @@ export class Percepcao {
     return ts;
   }
 
-  /** Objetos → [{classe, score, x, y, w, h}] normalizados no quadro. */
+  /** Objetos → [{classe, score, x, y, w, h}] normalizados no quadro. A fonte pode ser o vídeo ou o quadro realçado (canvas). */
   objetos(video, t) {
     const det = this.tarefas.objetos;
     if (!det) return null;
-    const vw = video.videoWidth, vh = video.videoHeight;
+    const vw = video.videoWidth || video.width, vh = video.videoHeight || video.height;
     const r = det.detectForVideo(video, this.#ts('objetos', t));
     const out = [];
     for (const d of r.detections || []) {
@@ -225,6 +228,22 @@ export class Percepcao {
     if (!pl) return null;
     const r = pl.detectForVideo(video, this.#ts('pose', t));
     return r.landmarks || [];
+  }
+
+  /** Classes do ImageNet para uma imagem (recorte/ladrilho) → [{nome, score}] em ordem decrescente. */
+  classificar(imagem) {
+    const c = this.tarefas.classificador;
+    if (!c) return null;
+    const r = c.classify(imagem);
+    return (r.classifications?.[0]?.categories || []).map(k => ({ nome: k.categoryName, score: k.score }));
+  }
+
+  /** Vetor de características (L2-normalizado) de uma imagem → Float32Array, ou null. */
+  embedding(imagem) {
+    const e = this.tarefas.embedder;
+    if (!e) return null;
+    const v = e.embed(imagem).embeddings?.[0]?.floatEmbedding;
+    return v ? Float32Array.from(v) : null;
   }
 
   fechar() {

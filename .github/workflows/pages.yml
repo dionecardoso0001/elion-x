@@ -53,6 +53,9 @@ jobs:
       - name: Runtime de visão, SDK oficial e modelos (SHA-256 conferido)
         run: npm run preparar
       - name: Build estático
+        # relé do alerta ao responsável (opcional): Settings → Secrets and variables → Actions → Variables
+        env:
+          SPY_RELE_URL: ${{ vars.SPY_RELE_URL }}
         run: npm run build
       - name: Montar o site
         working-directory: .

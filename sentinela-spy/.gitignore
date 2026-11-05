@@ -8,3 +8,4 @@ dist/
 # segredos
 .env
 .env.*
+!.env.example

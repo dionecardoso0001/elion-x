@@ -43,7 +43,8 @@ export const CABECALHOS_SEGURANCA = Object.freeze({
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer',
-  'Permissions-Policy': 'camera=(self), microphone=(), geolocation=(self)',
+  // microfone: a checagem de saúde conversa com o motorista por voz (reconhecimento de fala)
+  'Permissions-Policy': 'camera=(self), microphone=(self), geolocation=(self)',
   'Cross-Origin-Opener-Policy': 'same-origin',
   'X-Robots-Tag': 'noindex, nofollow',
 });

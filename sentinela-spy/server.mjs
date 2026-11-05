@@ -15,6 +15,8 @@
      SPY_TOKEN           token de acesso ao agente — OBRIGATÓRIO se expuser na rede
      PORT                padrão 4040
      HOST                padrão 127.0.0.1 (só este computador)
+     RELE_TOKENS, WHATSAPP_*, EMAIL_*, RESEND_API_KEY, GMAIL_*   relé de alerta ao
+                         responsável (/api/spy/alerta) — ver notificacao.mjs e ALERTAS.md
    ═══════════════════════════════════════════════════════════════════════ */
 import http from 'node:http';
 import fs from 'node:fs';
@@ -25,6 +27,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { classificarCaminho, caminhoProibido, criarEntregador, CABECALHOS_SEGURANCA } from './estaticos.mjs';
 import { MODELO, montarPedido, validarMensagens, recursoRecusado } from './js/spy/cerebro.js';
 import { VERSAO, MEDIAPIPE_VERSAO } from './js/config.js';
+import { criarRele } from './notificacao.mjs';
 
 const RAIZ = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ_REAL = fs.realpathSync.native(RAIZ);
@@ -93,13 +96,14 @@ function cacheControlPara(rel) {
   return 'no-cache';                                                                         // revalida sempre (304)
 }
 
-export function criarServidor({ env = process.env, cliente = undefined } = {}) {
+export function criarServidor({ env = process.env, cliente = undefined, fetchRele = undefined } = {}) {
   const TOKEN = env.SPY_TOKEN || '';
   const temCredencial = !!(env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN);
   const agente = cliente !== undefined ? cliente : (temCredencial ? new Anthropic({ maxRetries: 2, timeout: 120_000 }) : null);
   const limitador = criarLimitador({ porMinuto: Number(env.SPY_LIMITE_MIN) || 12 });
   const compat = {};   // recursos opcionais que a API recusou para esta chave (vale para o processo)
   const entregador = criarEntregador();
+  const rele = criarRele({ env, ...(fetchRele ? { fetchFn: fetchRele } : {}) });   // alerta ao responsável: WhatsApp oficial + e-mail
 
   const json = (res, status, obj, extra = {}) => {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...CABECALHOS_SEGURANCA, ...extra });
@@ -146,13 +150,31 @@ export function criarServidor({ env = process.env, cliente = undefined } = {}) {
     }
   }
 
-  return http.createServer(async (req, res) => {
+  /** Rota do relé: adapta a requisição do Node ao manipulador Fetch de notificacao.mjs. */
+  async function apiRele(req, res, url) {
+    let corpo;
+    if (req.method === 'POST') {
+      try { corpo = await lerCorpo(req, 16384); } catch { return json(res, 413, { erro: 'alerta grande demais' }); }
+    }
+    const cabecalhos = new Headers();
+    for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') cabecalhos.set(k, v);
+    const r = await rele.tratar(new Request(`http://localhost${url.pathname}`, { method: req.method, headers: cabecalhos, body: corpo }));
+    // chaves minúsculas dos dois lados: senão o Node junta "nosniff, nosniff" (visto no teste)
+    const saida = Object.fromEntries(Object.entries(CABECALHOS_SEGURANCA).map(([k, v]) => [k.toLowerCase(), v]));
+    for (const [k, v] of r.headers) saida[k.toLowerCase()] = v;
+    res.writeHead(r.status, saida);
+    res.end(await r.text());
+  }
+
+  const servidor = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
       if (url.pathname === '/api/spy/estado' && req.method === 'GET') {
         return json(res, 200, { disponivel: !!agente, exige_token: !!TOKEN, modelo: agente ? MODELO : null, versao: VERSAO,
-          recursos_desligados: Object.keys(compat).filter(k => compat[k] === false) });
+          recursos_desligados: Object.keys(compat).filter(k => compat[k] === false),
+          rele: { configurado: rele.configurado } });
       }
+      if (url.pathname === '/api/spy/alerta' || url.pathname === '/api/spy/rele/estado') return await apiRele(req, res, url);
       if (url.pathname === '/api/spy/mensagens') {
         if (req.method !== 'POST') return json(res, 405, { erro: 'use POST' }, { Allow: 'POST' });
         return await apiMensagens(req, res);
@@ -179,6 +201,8 @@ export function criarServidor({ env = process.env, cliente = undefined } = {}) {
       if (!res.headersSent) json(res, 500, { erro: 'falha interna' }); else res.destroy();
     }
   });
+  servidor.rele = rele;
+  return servidor;
 }
 
 // ── execução direta (npm start) ──
@@ -194,6 +218,8 @@ if (process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(file
     console.log(`  interface   http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORTA}`);
     console.log(`  agente      ${comChave ? `modo servidor · ${MODELO}` : 'sem chave no servidor → modo chave própria no navegador'}`);
     console.log(`  acesso      ${process.env.SPY_TOKEN ? 'token exigido (SPY_TOKEN)' : 'sem token'}`);
+    const r = servidor.rele;
+    console.log(`  alerta      ${r.configurado ? `relé ativo → ${[r.estado().whatsapp && 'WhatsApp', r.estado().email && `e-mail (${r.estado().email.provedor})`, r.estado().webhook && 'webhook'].filter(Boolean).join(' + ')}` : 'relé desligado (sem RELE_TOKENS ou sem canal) — ver ALERTAS.md'}`);
     console.log(`  runtime     ${local ? `local (MediaPipe ${MEDIAPIPE_VERSAO})` : 'NÃO preparado — rode: npm run preparar'}`);
     if (HOST !== '127.0.0.1' && HOST !== 'localhost' && comChave && !process.env.SPY_TOKEN) {
       console.warn('\n  ⚠ Servidor exposto na rede COM chave da API e SEM SPY_TOKEN: qualquer um na rede gasta o seu crédito. Defina SPY_TOKEN.');

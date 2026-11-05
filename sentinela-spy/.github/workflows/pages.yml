@@ -37,6 +37,9 @@ jobs:
       - name: Runtime, SDK e modelos (SHA-256 conferido)
         run: npm run preparar
       - name: Montar dist/
+        # relé do alerta ao responsável (opcional): Settings → Secrets and variables → Actions → Variables
+        env:
+          SPY_RELE_URL: ${{ vars.SPY_RELE_URL }}
         run: npm run build
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
