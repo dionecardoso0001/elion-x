@@ -205,3 +205,26 @@ test('adaptação no servidor: API recusa o fallback → repete UMA vez sem ele,
   assert.equal(r3.status, 502, '400 de outra natureza não é repetido');
   assert.equal(recebidos.length, 4);
 });
+
+test('relé no servidor próprio: /api/spy/alerta autentica, envia pelo WhatsApp e o estado mostra o relé', async t => {
+  const chamadas = [];
+  const fetchRele = async (url, init) => { chamadas.push({ url, corpo: JSON.parse(init.body) }); return new Response(JSON.stringify({ messages: [{ id: 'w1' }] }), { status: 200 }); };
+  const env = { RELE_TOKENS: 'carro1:tok-carro1-0123456789abcdef', WHATSAPP_TOKEN: 'x', WHATSAPP_PHONE_ID: '99', WHATSAPP_TEMPLATE: 'alerta_saude_motorista', WHATSAPP_DESTINOS: '5511999998888' };
+  const s = await subir(criarServidor({ env, cliente: null, fetchRele }));
+  t.after(s.fechar);
+  const est = JSON.parse((await s.pedir('/api/spy/estado')).corpo);
+  assert.equal(est.rele.configurado, true);
+  const alerta = { tipo: 'teste', motorista: 'João', situacao: 'teste do alerta' };
+  assert.equal((await s.pedir('/api/spy/alerta', POST(alerta))).status, 401, 'sem token do aparelho');
+  const r = await s.pedir('/api/spy/alerta', POST(alerta, { Authorization: 'Bearer tok-carro1-0123456789abcdef' }));
+  assert.equal(r.status, 200, r.corpo.toString());
+  assert.equal(JSON.parse(r.corpo).canais.whatsapp[0].ok, true);
+  assert.equal(r.h['x-content-type-options'], 'nosniff', 'cabeçalhos de segurança também na rota do relé');
+  assert.match(r.h['permissions-policy'], /microphone=\(self\)/, 'a checagem de saúde precisa do microfone (antes: microphone=())');
+  assert.equal(chamadas[0].url, 'https://graph.facebook.com/v24.0/99/messages');
+  assert.match(chamadas[0].corpo.template.components[0].parameters[2].text, /^TESTE — teste do alerta/);
+  const sem = await subir(criarServidor({ env: {}, cliente: null }));
+  t.after(sem.fechar);
+  assert.equal(JSON.parse((await sem.pedir('/api/spy/estado')).corpo).rele.configurado, false);
+  assert.equal((await sem.pedir('/api/spy/alerta', POST(alerta, { Authorization: 'Bearer qualquer-coisa-0123456789' }))).status, 503);
+});

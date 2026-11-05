@@ -96,12 +96,15 @@
   <aside class="col" id="colEsq" aria-label="Controles">
     <section class="painel">
       <h2>◈ SENSOR ÓPTICO</h2>
-      <label class="campo">Câmera<select id="selCamera"><option value="">padrão do modo</option></select></label>
+      <label class="campo">Câmera<select id="selCamera"><option value="">automática (padrão da missão)</option></select></label>
+      <p class="dica" id="infoCameras" aria-live="polite">As câmeras do aparelho aparecem aqui depois que a câmera for liberada.</p>
       <div class="linha-btns">
+        <button id="btnProcurarCam" class="btn" type="button" title="lista de novo as câmeras conectadas (USB, integrada, virtual)">⟳ PROCURAR CÂMERAS</button>
         <button id="btnTrocarCam" class="btn">⇄ FRONTAL/TRASEIRA</button>
         <button id="btnEspelhar" class="btn" aria-pressed="false">⇋ ESPELHAR</button>
-        <button id="btnNV" class="btn" aria-pressed="false" title="filtro de visão noturna — só na exibição; a IA vê a imagem original">◐ FILTRO NV</button>
+        <button id="btnNV" class="btn" aria-pressed="false" title="filtro de visão noturna — só na exibição">◐ FILTRO NV</button>
       </div>
+      <label class="chk"><input type="checkbox" id="chkRealce" checked> <span>realce automático no escuro <small>(a detecção usa a imagem clareada; escuro total exige câmera infravermelha)</small></span></label>
     </section>
 
     <section class="painel">
@@ -139,6 +142,7 @@
       </div>
       <p class="dica" id="dicaZona" hidden>Toque ou clique nos cantos da área sobre o vídeo (mínimo 3). Pelo teclado: <b>setas</b> movem o cursor, <b>Espaço</b> marca o vértice, <b>Enter</b> fecha, <b>Esc</b> cancela.</p>
       <ul id="listaZonas" class="lista-zonas" aria-label="Zonas definidas"></ul>
+      <label class="chk"><input type="checkbox" id="chkMovimento" checked> <span>sensor de movimento e de objeto deixado <small>(qualquer tipo de objeto; movimento sem pessoa vista alerta no escuro)</small></span></label>
       <label class="chk"><input type="checkbox" id="chkPoses" checked> esqueletos (pose)</label>
       <label class="chk"><input type="checkbox" id="chkCalor"> mapa de calor da normalidade</label>
       <label class="chk"><input type="checkbox" id="chkDemo"> <span>PRESET DEMONSTRAÇÃO <small>(abandono 8 s, permanência 12 s)</small></span></label>
@@ -154,6 +158,18 @@
       <p class="dica">Fixe o celular num suporte, câmera frontal voltada para o rosto, sem cobrir a visão da via. Configure com o veículo parado — <b>não manuseie o aparelho em movimento</b> (CTB, art. 252).</p>
     </section>
 
+    <section class="painel modo-so" data-so="motorista" id="ctlSaude" hidden>
+      <h2>◈ CHECAGEM DE SAÚDE <span id="seloRele" class="selo">…</span></h2>
+      <p class="dica">Mão no peito, mão nos olhos por mais de 3 s, cabeça tombada ou rosto fora de visão: a plataforma pergunta por voz se o motorista está bem. Se ele pedir ajuda <b>ou não responder</b>, o responsável é avisado por WhatsApp e e-mail com a localização.</p>
+      <div class="linha-btns">
+        <button id="btnConfigAlerta" class="btn" type="button">⚙ RESPONSÁVEL E RELÉ</button>
+        <button id="btnTestarAlerta" class="btn" type="button" title="envia uma mensagem de TESTE real ao responsável, por todos os canais do relé">◎ TESTAR ALERTA</button>
+        <button id="btnMicrofone" class="btn" type="button" title="libera o microfone agora, para o navegador não perguntar no meio de uma emergência">🎙 LIBERAR MICROFONE</button>
+        <button id="btnPedirAjuda" class="btn btn-critico" type="button">✚ PRECISO DE AJUDA</button>
+      </div>
+      <p class="dica" id="infoSaude" aria-live="polite"></p>
+    </section>
+
     <section class="painel modo-so" data-so="transito" id="ctlTransito" hidden>
       <h2>◈ CORREDOR</h2>
       <label class="campo">Horizonte <output id="outHorizonte"></output><input id="rngHorizonte" type="range" min="30" max="80" value="55"></label>
@@ -161,6 +177,13 @@
       <label class="campo">Largura na base <output id="outLargBase"></output><input id="rngLargBase" type="range" min="40" max="100" value="92"></label>
       <label class="campo">Campo de visão da câmera <output id="outFov"></output><input id="rngFov" type="range" min="40" max="120" value="70"></label>
       <p class="dica">Celular no para-brisa, câmera traseira para a via. Alinhe o trapézio à sua faixa. Distâncias são estimativas monoculares (~).</p>
+    </section>
+
+    <section class="painel" id="ctlLab">
+      <h2>◈ LABORATÓRIO DE MODELO</h2>
+      <p class="dica">Ensine com fotos suas: <b>locais restritos</b> (pessoa na cena vira intrusão) e <b>classes novas</b> que o modelo não conhece (ex.: VEADO, no trânsito).</p>
+      <div class="linha-btns"><button id="btnLab" class="btn" type="button">⚗ ABRIR LABORATÓRIO</button></div>
+      <p class="dica" id="labResumo" aria-live="polite"></p>
     </section>
 
     <section class="painel" id="ctlCampo">
@@ -251,6 +274,8 @@
   <span>DELEGADO <b id="rBackend">--</b></span>
   <span>RUNTIME <b id="rRuntime">--</b></span>
   <span>GPS <b id="rGps">--</b></span>
+  <span>CÂMERA <b id="rCamera">--</b></span>
+  <span>LUZ <b id="rLuz">--</b></span>
   <span class="priv">🔒 percepção no aparelho · agente de IA sob demanda</span>
 </footer>
 
@@ -283,6 +308,99 @@
       <button type="button" class="btn" id="btnCancelarAgente">✕ CANCELAR</button>
     </div>
   </form>
+</dialog>
+
+<!-- ▓▓ CHECAGEM DE SAÚDE (modal: é uma emergência) ▓▓ -->
+<dialog id="dlgSaude" class="dlg-saude" aria-labelledby="saudeTitulo" aria-describedby="saudeFala">
+  <div class="saude">
+    <h2 id="saudeTitulo">✚ CHECAGEM DE SAÚDE</h2>
+    <p id="saudeMotivo" class="saude-motivo"></p>
+    <p id="saudeFala" class="saude-fala" aria-live="assertive"></p>
+    <p id="saudeOuvindo" class="saude-ouvindo" hidden>🎙 OUVINDO… responda em voz alta</p>
+    <p id="saudeOuvido" class="saude-ouvido"></p>
+    <div class="saude-botoes">
+      <button id="btnSaudeBem" class="btn-saude bem" type="button">✔ ESTOU BEM</button>
+      <button id="btnSaudeAjuda" class="btn-saude ajuda" type="button">✚ PRECISO DE AJUDA</button>
+    </div>
+    <p id="saudeEnvio" class="saude-envio" role="status"></p>
+    <ul id="saudeSintomas" class="saude-sintomas" aria-label="Sintomas relatados"></ul>
+    <div class="linha-btns">
+      <a class="btn btn-critico" href="tel:192">✚ LIGAR 192 — SAMU</a>
+      <a id="lnkResponsavel" class="btn" hidden>☎ LIGAR PARA O RESPONSÁVEL</a>
+      <button id="btnSaudeFechar" class="btn" type="button">✕ FECHAR</button>
+    </div>
+    <p class="dica">Triagem por sinais observáveis — não é diagnóstico.</p>
+  </div>
+</dialog>
+
+<!-- ▓▓ RESPONSÁVEL E RELÉ ▓▓ -->
+<dialog id="dlgAlerta" aria-labelledby="dlgAlertaTitulo">
+  <form id="formAlerta" class="dlg">
+    <h2 id="dlgAlertaTitulo">◈ ALERTA AO RESPONSÁVEL</h2>
+    <label class="campo" for="inpMotorista">Nome do motorista</label>
+    <input id="inpMotorista" type="text" maxlength="80" autocomplete="off">
+    <label class="campo" for="inpVeiculo">Veículo / placa</label>
+    <input id="inpVeiculo" type="text" maxlength="40" autocomplete="off">
+    <label class="campo" for="inpReleUrl">Endereço do relé <small>(servidor próprio: deixe em branco)</small></label>
+    <input id="inpReleUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://sentinela-spy-rele.SUA-CONTA.workers.dev/alerta">
+    <label class="campo" for="inpReleToken">Token deste aparelho <small>(um dos RELE_TOKENS do relé)</small></label>
+    <input id="inpReleToken" type="password" autocomplete="off" spellcheck="false">
+    <label class="campo" for="inpTelResponsavel">Telefone do responsável <small>(só para o botão LIGAR — os avisos automáticos saem do relé)</small></label>
+    <input id="inpTelResponsavel" type="tel" autocomplete="off" placeholder="+55 11 99999-8888">
+    <label class="chk"><input type="checkbox" id="chkSemResposta" checked> <span>avisar o responsável se o motorista <b>não responder</b> <small>(recomendado: desmaio e AVC não respondem)</small></span></label>
+    <label class="chk"><input type="checkbox" id="chkLocalAlerta" checked> <span>enviar a localização (GPS) no alerta</span></label>
+    <p class="dica" id="infoRele"></p>
+    <p class="dica">Os destinatários (WhatsApp e e-mail) ficam no RELÉ, não neste aparelho — ninguém usa o relé para mandar mensagem a terceiros. Passo a passo: ALERTAS.md.</p>
+    <p id="alertaErro" class="boot-erro" role="alert" hidden></p>
+    <div class="linha-btns">
+      <button type="submit" class="btn btn-primario-sm">✔ SALVAR</button>
+      <button type="button" class="btn" id="btnCancelarAlerta">✕ CANCELAR</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ▓▓ LABORATÓRIO DE MODELO ▓▓ -->
+<dialog id="dlgLab" aria-labelledby="labTitulo">
+  <div class="dlg lab">
+    <h2 id="labTitulo">⚗ LABORATÓRIO DE MODELO</h2>
+    <p class="dica"><b>LOCAL RESTRITO</b>: fotos de um lugar onde ninguém pode estar — quando a câmera vê esse lugar com uma pessoa, é intrusão. <b>CLASSE NOVA</b>: fotos de algo que o modelo não conhece (ex.: VEADO) — entra na varredura do trânsito. Use 10 ou mais fotos, de ângulos e luzes diferentes; acrescente fotos <b>negativas</b> (parecido, mas liberado) para afinar. Tudo fica só neste aparelho.</p>
+    <div class="lab-novo">
+      <label class="sr-only" for="labNome">Nome do novo conceito</label>
+      <input id="labNome" type="text" maxlength="40" placeholder="nome (ex.: SUBESTAÇÃO, VEADO)">
+      <label class="sr-only" for="labTipo">Tipo</label>
+      <select id="labTipo"><option value="local">local restrito</option><option value="classe">classe nova</option></select>
+      <label class="sr-only" for="labPorte">Porte da classe</label>
+      <select id="labPorte"><option value="grande">porte grande</option><option value="pequeno">porte pequeno</option></select>
+      <button id="btnLabCriar" class="btn btn-primario-sm" type="button">＋ CRIAR</button>
+    </div>
+    <ul id="labLista" class="lab-lista" aria-label="Conceitos ensinados"></ul>
+    <section id="labDetalhe" class="lab-detalhe" hidden aria-labelledby="labSelNome">
+      <h3 id="labSelNome"></h3>
+      <p id="labQualidade" class="dica"></p>
+      <label class="campo">Limiar de similaridade <output id="outLabLimiar"></output><input id="rngLabLimiar" type="range" min="30" max="97" step="1"></label>
+      <div class="linha-btns">
+        <button id="btnLabFotos" class="btn" type="button">⇪ FOTOS DO LOCAL/CLASSE</button>
+        <button id="btnLabNegativas" class="btn" type="button">⇪ FOTOS NEGATIVAS</button>
+        <button id="btnLabCapturar" class="btn" type="button">⌖ CAPTURAR DA CÂMERA</button>
+        <button id="btnLabCapturarNeg" class="btn" type="button">⌖ CAPTURAR COMO NEGATIVA</button>
+        <button id="btnLabTestar" class="btn" type="button">◎ TESTAR AGORA</button>
+        <button id="btnLabFalso" class="btn btn-aviso" type="button">✖ ÚLTIMO ALARME FOI FALSO</button>
+        <button id="btnLabAuto" class="btn" type="button">↺ LIMIAR AUTOMÁTICO</button>
+        <button id="btnLabExcluir" class="btn" type="button">⌫ EXCLUIR</button>
+      </div>
+      <input id="labArquivos" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden>
+      <input id="labArquivosNeg" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden>
+      <p id="labTeste" class="dica" aria-live="polite"></p>
+      <div id="labGaleria" class="lab-galeria" aria-label="Fotos de exemplo"></div>
+    </section>
+    <p id="labStatus" class="dica" role="status"></p>
+    <div class="linha-btns">
+      <button id="btnLabExportar" class="btn" type="button">⇩ EXPORTAR</button>
+      <button id="btnLabImportar" class="btn" type="button">⇧ IMPORTAR</button>
+      <input id="labImportar" type="file" accept="application/json,.json" hidden>
+      <button id="btnLabFechar" class="btn" type="button">✕ FECHAR</button>
+    </div>
+  </div>
 </dialog>
 
 <div id="srAlerta" class="sr-only" aria-live="assertive"></div>

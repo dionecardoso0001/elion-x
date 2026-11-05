@@ -52,14 +52,34 @@ export const MODELOS = {
     sha256: '59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a',
     bytes: 5777746,
   },
+  // segundo estágio da fauna: 1.000 classes do ImageNet (17 cobras, 118 raças de cão,
+  // galinha/galo, boi, tatu, jabuti…). int8: 5,4 MB contra 18,6 MB do float32.
+  classificador: {
+    nome: 'EfficientNet-Lite0 (ImageNet, 1.000 classes, int8)',
+    arquivo: 'efficientnet_lite0_int8.tflite',
+    url: 'https://storage.googleapis.com/mediapipe-models/image_classifier/efficientnet_lite0/int8/1/efficientnet_lite0.tflite',
+    sha256: 'bc2ffe19c1118de0c0c2a9088992da5589722656e0fba81421385300a4a34b16',
+    bytes: 5434517,
+  },
+  // laboratório de modelo: vetor de características (embedding) de uma imagem,
+  // para reconhecer LOCAIS e CLASSES ensinados com fotos do operador
+  embedder: {
+    nome: 'MobileNet-V3 Large (embedding de imagem)',
+    arquivo: 'mobilenet_v3_large_embedder.tflite',
+    url: 'https://storage.googleapis.com/mediapipe-models/image_embedder/mobilenet_v3_large/float32/1/mobilenet_v3_large.tflite',
+    sha256: '11af3c560dfeed7737cb4c03c23bf52a8403020784192d4dea0b74862a12828d',
+    bytes: 10889458,
+  },
 };
 
 /* Quais modelos cada modo precisa. O detector de objetos entra no modo
-   motorista para um único fim: flagrar o CELULAR na mão do condutor. */
+   motorista para um único fim: flagrar o CELULAR na mão do condutor; a pose
+   entra para as mãos (nos olhos, no peito). O classificador entra no trânsito
+   para a fauna que o detector não conhece. */
 export const MODELOS_POR_MODO = {
   sentinela: ['objetos', 'pose'],
-  motorista: ['rosto', 'objetos'],
-  transito:  ['objetos'],
+  motorista: ['rosto', 'objetos', 'pose'],
+  transito:  ['objetos', 'classificador'],
 };
 
 /* Rótulos do detector — extraídos do labels.txt embutido no próprio
@@ -145,6 +165,11 @@ export const LIMIARES = {
     instabilidadeYawStd: 8,
     instabilidadeReversoes: 6,
     velocidadeMinimaMs: 2.8,     // ~10 km/h — abaixo disso, com GPS, o carro é tratado como parado
+    // mãos pelo esqueleto (pose) — gatilhos da CHECAGEM DE SAÚDE, não diagnóstico
+    maoOlhosS: 3.0,              // pedido do operador: mão nos olhos por mais de 3 s
+    maoOlhosCriticoS: 5.0,       // HEURÍSTICA — olho coberto 5 s em movimento = via fora de vista
+    maoPeitoS: 2.5,              // HEURÍSTICA — ajustar o cinto leva ~1–2 s; mão parada no peito, mais
+    maoToleranciaMs: 600,        // a pose "pisca": 0,6 s sem ver a mão não zera o cronômetro
   },
 
   transito: {
@@ -182,6 +207,13 @@ export const LIMIARES = {
     maosAltoS: 2.0,
     aglomeracao: 6,
     riscoHitsMin: 4,
+    // sensor de movimento / fundo duplo (escuro.js)
+    movimentoMinS: 0.6,          // HEURÍSTICA — mancha precisa persistir para não ser cintilação
+    novoConfirmarS: 3,           // alteração parada só conta depois de estável por 3 s
+    rastroJanelaS: 10,           // quem passou pelo local nos 10 s antes de a alteração aparecer é o "dono"
+    raioDonoNovoM: 1.5,
+    alteracaoMaxS: 120,          // alteração sem dono: alerta por 2 min e é absorvida no fundo
+    esquecidoMaxS: 600,          // objeto esquecido: até 10 min de alerta
   },
 
   anomalia: {

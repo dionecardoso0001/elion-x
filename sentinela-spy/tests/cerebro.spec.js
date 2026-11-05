@@ -208,3 +208,46 @@ test('diagnóstico: chamada mínima com os mesmos recursos das tarefas reais', (
   assert.equal(p.messages[0].role, 'user');
   assert.deepEqual(ESQUEMAS.diagnostico.properties.status.enum, ['ok']);
 });
+
+/* ── checagem de saúde por voz ── */
+import { pedidoChecagem, normalizarChecagem, turnoChecagem, ESTADOS_SAUDE } from '../js/spy/cerebro.js';
+
+test('checagem: pedido com saída estruturada, esforço low, sem ferramentas; transcrição cercada como dado', () => {
+  const p = montarPedido('checagem', [pedidoChecagem({ motivo: 'mao_peito', sinais: ['MÃO NO PEITO'], transcricao: 'tô com dor no peito', responsavelAvisado: true })]);
+  assert.equal(p.output_config.format.schema, ESQUEMAS.checagem);
+  assert.equal(p.output_config.effort, 'low', 'quem espera a fala está dirigindo');
+  assert.equal(p.tools, undefined);
+  assert.deepEqual(ESQUEMAS.checagem.properties.estado.enum, ESTADOS_SAUDE);
+  assert.equal(ESQUEMAS.checagem.properties.encerrar.type, 'boolean');
+  const txt = p.messages[0].content;
+  assert.match(txt, /⟦DADO⟧\n\{"motivo":"mao_peito".*"responsavel_avisado":true/);
+  assert.match(txt, /O MOTORISTA DISSE.*\n⟦DADO⟧\ntô com dor no peito\n⟦\/DADO⟧/);
+  assert.match(pedidoChecagem({ motivo: 'ausente' }).content, /\(nada — silêncio\)/);
+  assert.equal(pedidoChecagem({ motivo: 'x', transcricao: 'a'.repeat(5000) }).content.includes('a'.repeat(1001)), false, 'transcrição limitada');
+  assert.match(SISTEMAS.checagem, /192/);
+  assert.match(SISTEMAS.checagem, /Não faça diagnóstico/);
+});
+
+test('checagem: normalização defende enum, tamanho e tipos', () => {
+  const n = normalizarChecagem({ estado: 'morto', fala: '', sintomas: ['dor', 5, 'x'.repeat(500)], encerrar: 'sim' });
+  assert.equal(n.estado, 'incerto'); assert.match(n.fala, /estou bem/);
+  assert.equal(n.sintomas.length, 3); assert.equal(n.sintomas[2].length, 80);
+  assert.equal(n.encerrar, false, 'só true literal encerra');
+});
+
+test('checagem: turno só ACRESCENTA ao histórico (pensamento preservado) e recusa não entra no histórico', async () => {
+  const conteudo = [{ type: 'thinking', thinking: '', signature: 'sig' }, { type: 'text', text: '{"estado":"emergencia","fala":"Pare em local seguro e ligue 192.","sintomas":["dor no peito"],"encerrar":false}' }];
+  const enviados = [];
+  const enviar = async (tipo, msgs) => { enviados.push({ tipo, msgs: structuredClone(msgs) }); return { model: 'claude-opus-5-5', stop_reason: 'end_turn', content: conteudo, usage: { input_tokens: 10, output_tokens: 5 } }; };
+  const e1 = pedidoChecagem({ motivo: 'mao_peito', transcricao: 'dor no peito' });
+  const r1 = await turnoChecagem({ historico: [], entrada: e1, enviar });
+  assert.equal(r1.resposta.estado, 'emergencia'); assert.deepEqual(r1.resposta.sintomas, ['dor no peito']);
+  assert.equal(enviados[0].tipo, 'checagem');
+  assert.deepEqual(r1.mensagens[1].content, conteudo, 'resposta inteira volta como está, com o bloco de pensamento');
+  const r2 = await turnoChecagem({ historico: r1.mensagens, entrada: pedidoChecagem({ motivo: 'mao_peito', transcricao: 'aperta muito' }), enviar });
+  assert.deepEqual(enviados[1].msgs.slice(0, 2), r1.mensagens, 'prefixo idêntico: nada editado');
+  assert.equal(r2.mensagens.length, 4);
+  const recusa = await turnoChecagem({ historico: [], entrada: e1, enviar: async () => ({ stop_reason: 'refusal', stop_details: { category: 'bio' }, content: [], usage: {} }) });
+  assert.equal(recusa.recusa, true); assert.equal(recusa.categoria, 'bio');
+  assert.equal(recusa.mensagens.length, 1, 'turno recusado não acrescenta resposta');
+});

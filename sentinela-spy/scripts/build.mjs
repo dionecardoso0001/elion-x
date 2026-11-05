@@ -32,9 +32,26 @@ for (const d of PASTAS_PUBLICAS) if (fs.existsSync(path.join(RAIZ, d))) copiar(p
 for (const obrigatorio of ['index.html', 'plataforma.json', 'vendor/anthropic-sdk.mjs']) {
   if (!fs.existsSync(path.join(DIST, obrigatorio))) { console.error(`✗ falta ${obrigatorio} — rode npm run preparar antes`); process.exit(1); }
 }
+// relé do alerta ao responsável (opcional): página estática só conversa com origens
+// listadas na CSP. SPY_RELE_URL vem de uma variável do repositório no GitHub
+// (Settings → Secrets and variables → Actions → Variables) — não é segredo: o token
+// de cada aparelho é que autentica. Só a ORIGEM normalizada entra na CSP.
+let rele = null;
+if (process.env.SPY_RELE_URL) {
+  let u;
+  try { u = new URL(process.env.SPY_RELE_URL); } catch { console.error('✗ SPY_RELE_URL não é uma URL válida'); process.exit(1); }
+  if (u.protocol !== 'https:') { console.error('✗ SPY_RELE_URL precisa ser https://'); process.exit(1); }
+  rele = { url: u.href, origem: u.origin };
+  const idx = path.join(DIST, 'index.html');
+  const html = fs.readFileSync(idx, 'utf8');
+  const novo = html.replace("connect-src 'self'", `connect-src 'self' ${u.origin}`);
+  if (novo === html) { console.error("✗ CSP do index.html sem \"connect-src 'self'\" — não dá para liberar o relé"); process.exit(1); }
+  fs.writeFileSync(idx, novo);
+  console.log(`  ✓ relé liberado na CSP: ${u.origin}`);
+}
 // hospedagem estática não tem /api/: o boot não sonda servidor (evita um 404 no console)
 const plat = JSON.parse(fs.readFileSync(path.join(DIST, 'plataforma.json'), 'utf8'));
-fs.writeFileSync(path.join(DIST, 'plataforma.json'), JSON.stringify({ ...plat, hospedagem: 'estatica' }, null, 2));
+fs.writeFileSync(path.join(DIST, 'plataforma.json'), JSON.stringify({ ...plat, hospedagem: 'estatica', ...(rele ? { rele } : {}) }, null, 2));
 // GitHub Pages: sem Jekyll (ele esconderia arquivos e pastas que começam com "_")
 fs.writeFileSync(path.join(DIST, '.nojekyll'), '');
 console.log(`  ✓ dist/ pronto: ${arquivos} arquivos, ${(bytes / 1048576).toFixed(1)} MB`);

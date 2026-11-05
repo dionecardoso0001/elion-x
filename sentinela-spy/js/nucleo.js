@@ -13,16 +13,24 @@
 import { LIMIARES, MODELOS, MODELOS_POR_MODO, VERSAO, rotulo, limiaresEfetivos, NOMES_PERFIL } from './config.js';
 import { GravadorCampo, ROTULOS_ANOTACAO } from './gravador.js';
 import { Rastreador } from './rastreador.js';
-import { AnalisadorMotorista, celularJuntoAoRosto } from './motorista.js';
-import { AnalisadorTransito } from './transito.js';
+import { AnalisadorMotorista, celularJuntoAoRosto, esqueletoDoCondutor } from './motorista.js';
+import { ChecagemSaude, MOTIVOS, montarAlerta, interpretarResposta } from './saude.js';
+import { enviarAlerta, resumoEnvio, criarFila, releLiberado } from './spy/alerta.js';
+import { ouvir, escutaDisponivel, liberarMicrofone } from './escuta.js';
+import { AnalisadorTransito, tipoDe } from './transito.js';
+import { FaunaPista, ladrilhosCorredor, recorteDistante, fundirDeteccoes } from './fauna.js';
+import { novoConceito, adicionarExemplo, removerExemplo, calibrar, reconhecer, melhorConceito, exportar, importar } from './laboratorio.js';
+import { BaseLab } from './spy/labdb.js';
 import { AnalisadorVigilancia } from './vigilancia.js';
 import { GestorAlertas } from './alertas.js';
 import { narrar, relatorioSituacao, montarTelemetria } from './agente.js';
 import { pedidoInterpretacao, pedidoRelatorio, pedidoDiagnostico, lerResposta, extrairJSON, normalizarInterpretacao, normalizarRelatorio,
-  conversar, criarPolitica, custoEstimado, MODELO, ROTULO_RECURSO } from './spy/cerebro.js';
+  conversar, criarPolitica, custoEstimado, MODELO, ROTULO_RECURSO, pedidoChecagem, turnoChecagem } from './spy/cerebro.js';
 import { ClienteAgente, detectarServidor } from './spy/cliente.js';
 import { RegistroIncidentes } from './spy/incidentes.js';
 import { Percepcao, abrirCamera, listarCameras, preVoo } from './percepcao.js';
+import { nomeCamera, opcoesCameras, resumoCameras, diferencaCameras, proximaCamera, explicarErroCamera, selecionaveis } from './cameras.js';
+import { MonitorLuz, DetectorMovimento, CFG_MOVIMENTO, paraCinza, estatisticasLuz, aplicarCurvaRGBA } from './escuro.js';
 import { Sirene } from './sirene.js';
 import { HUD } from './hud.js';
 
@@ -42,16 +50,18 @@ const lerCfg = () => { try { return JSON.parse(localStorage.getItem(CHAVE_CFG)) 
 const cfg = Object.assign({
   modo: 'sentinela', zonas: [], roi: { ...LIMIARES.transito.roi }, fov: LIMIARES.transito.fovHorizontalGraus,
   volume: 0.9, voz: true, poses: true, calor: false, demo: false, gpsMov: true, espelhar: null, nv: false, cameras: {},
-  perfil: 'padrao',
+  perfil: 'padrao', realce: true, movimento: true,
 }, lerCfg());
 // preferências do agente (a CHAVE da API nunca entra aqui — fica em armazenamento separado, ver configurarAgente)
 cfg.agente = { modo: null, imagens: true, relatorioMin: 0, lembrar: false, token: '', ...(cfg.agente || {}) };
+// alerta ao responsável: os DESTINATÁRIOS ficam no relé; aqui só quem dirige, o relé e o token deste aparelho
+cfg.alerta = { motorista: '', veiculo: '', url: '', token: '', telefone: '', semResposta: true, local: true, ...(cfg.alerta || {}) };
 const salvarCfg = () => { try { localStorage.setItem(CHAVE_CFG, JSON.stringify(cfg)); } catch { /* modo privado */ } };
 
 /* ── estado da operação ── */
 const E = {
   modo: cfg.modo, rodando: false, pausado: false,
-  stream: null, deviceId: null, facing: null,
+  stream: null, deviceId: null, facing: null, cameras: [],
   status: null, percepcao: null, hud: null, sirene: new Sirene(),
   rastreador: new Rastreador({ scoreNovo: LIMIARES.deteccao.scoreNovaTrilha }),
   motorista: new AnalisadorMotorista(),
@@ -59,7 +69,18 @@ const E = {
   vigilancia: new AnalisadorVigilancia(),
   alertas: new GestorAlertas(),
   trilhas: [], poses: [], rosto: null, saida: null,
-  ultimo: { objetos: 0, pose: 0, relatorio: 0, dom: 0, auto: -Infinity },
+  ultimo: { objetos: 0, pose: 0, relatorio: 0, dom: 0, auto: -Infinity, luz: 0, fauna: 0, local: 0 },
+  // visão no escuro: luz medida, quadro realçado para os detectores, sensor de movimento
+  luz: new MonitorLuz(), mov: new DetectorMovimento(), cena: null,
+  cvLuz: null, cvRealce: null, realcadoEm: -1,
+  // fauna na pista: segundo estágio (classificador) e segunda passada do detector no trecho distante
+  fauna: new FaunaPista(), cvRecorte: null, chamadasDet: 0,
+  // checagem de saúde do motorista
+  checagem: new ChecagemSaude({ escalarSemResposta: cfg.alerta.semResposta }), saude: null, filaSaude: Promise.resolve(),
+  saudeGeracao: 0, escuta: null, servidorRele: false, filaAlertas: null,
+  // laboratório de modelo: conceitos ensinados com fotos e o local restrito reconhecido agora
+  lab: new BaseLab(), labSel: null, localAtivo: null, localSeq: 0, vetorCena: null, ultimoAlarmeLocal: null, carregandoEmbedder: null,
+  faunaVez: false,
   tVideo: -1, fps: 0, quadrosEm: [], infMs: 0, errosSeguidos: 0,
   gps: { velocidade: null, precisao: null, em: null, watch: null, erro: null },
   zonaEdicao: null, gravador: null, composicao: null, evidencias: 0, analisando: false,
@@ -113,10 +134,12 @@ async function boot() {
   E.status = await fetch('plataforma.json', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).catch(() => null);
   if (E.status) {
     const nModelos = Object.values(E.status.modelos || {}).filter(Boolean).length;
-    logBoot('ok', `instalação própria · runtime MediaPipe ${E.status.mediapipe?.versao} · ${nModelos}/3 modelos na própria origem`);
+    logBoot('ok', `instalação própria · runtime MediaPipe ${E.status.mediapipe?.versao} · ${nModelos}/${Object.keys(MODELOS).length} modelos na própria origem`);
   } else {
     logBoot('aviso', 'instalação sem runtime local (plataforma.json ausente) — usando CDN e modelos do Google');
   }
+  const labOk = await E.lab.abrir();
+  logBoot(labOk ? 'ok' : 'aviso', `laboratório de modelo · ${E.lab.conceitos.length} conceito(s)${labOk ? '' : ' (só em memória: armazenamento bloqueado)'}`);
   const persistente = await E.incidentes.abrir();
   renderIncidentes();
   logBoot(persistente ? 'ok' : 'aviso', persistente
@@ -124,8 +147,13 @@ async function boot() {
     : 'registro de incidentes só em memória (armazenamento do navegador bloqueado)');
   // build estático (GitHub Pages) não tem servidor de agente: nem sonda
   E.servidorAgente = E.status?.hospedagem === 'estatica' ? { disponivel: false } : await detectarServidor();
+  E.servidorRele = !!E.servidorAgente.rele;   // relé do próprio servidor (/api/spy/alerta)
   configurarAgente();
   logBoot(E.agente.pronto ? 'ok' : 'aviso', textoEstadoAgente());
+  estadoRele();
+  logBoot(releConfigurado() ? 'ok' : 'aviso', releConfigurado()
+    ? 'alerta ao responsável · relé configurado (WhatsApp/e-mail)'
+    : 'alerta ao responsável · relé NÃO configurado — a checagem de saúde funciona, o aviso automático não (⚙ RESPONSÁVEL E RELÉ)');
 
   E.percepcao = new Percepcao({ status: E.status, aoLog: (n, m) => logBoot(n, m) });
   try {
@@ -178,6 +206,14 @@ async function boot() {
 /* ═════════════════ CÂMERA ═════════════════ */
 const facingPadrao = modo => (modo === 'motorista' ? 'user' : modo === 'transito' ? 'environment' : null);
 
+const nomeDoDispositivo = id => {
+  const lista = selecionaveis(E.cameras);
+  const i = lista.findIndex(c => c.deviceId === id);
+  return i >= 0 ? nomeCamera(lista[i], i) : '';
+};
+/** Erro com a instrução em português, preservando o nome do erro original (o boot decide por ele). */
+const erroDeCamera = (e, id) => Object.assign(new Error(explicarErroCamera(e, nomeDoDispositivo(id))), { name: e?.name || 'Error' });
+
 async function abrir(modo, { deviceId = cfg.cameras[modo] || null, facing = facingPadrao(modo) } = {}) {
   const v = $('video');
   let stream;
@@ -185,11 +221,13 @@ async function abrir(modo, { deviceId = cfg.cameras[modo] || null, facing = faci
   catch (e) {
     if (deviceId && (e.name === 'OverconstrainedError' || e.name === 'NotFoundError')) {
       delete cfg.cameras[modo]; salvarCfg();       // câmera salva sumiu (outro aparelho, USB desplugada)
-      stream = await abrirCamera({ facingMode: facing });
-    } else throw e;
+      logAgente({ nivel: 'aviso', texto: `Câmera escolhida indisponível (${nomeDoDispositivo(deviceId) || 'desconectada'}) — usando a automática.` });
+      try { stream = await abrirCamera({ facingMode: facing }); } catch (e2) { throw erroDeCamera(e2, null); }
+    } else throw erroDeCamera(e, deviceId);
   }
   E.stream?.getTracks().forEach(t => t.stop());
   E.stream = stream;
+  reiniciarEscuro();   // outra câmera = outra cena: o fundo aprendido não vale mais
   v.srcObject = stream;
   await v.play().catch(() => {});
   // proporção real do quadro: o CSS do celular dimensiona o visor por ela
@@ -201,7 +239,7 @@ async function abrir(modo, { deviceId = cfg.cameras[modo] || null, facing = faci
   E.deviceId = s.deviceId || deviceId;
   E.facing = s.facingMode || facing;
   aplicarEspelho();
-  await preencherCameras();
+  await atualizarCameras();   // com a permissão concedida, o navegador revela o nome de TODAS as câmeras
   E.tVideo = -1;
 }
 
@@ -213,19 +251,65 @@ function aplicarEspelho() {
   $('btnEspelhar').setAttribute('aria-pressed', String(esp));
 }
 
-async function preencherCameras() {
-  const sel = $('selCamera');
+/**
+ * Lista as câmeras do aparelho (webcam integrada, USB como a MX, captura de vídeo,
+ * câmera virtual) no seletor. Com relatar=true, conta no registro o que entrou
+ * ou saiu desde a última leitura — é chamada no "devicechange".
+ */
+async function atualizarCameras({ relatar = false } = {}) {
   const cams = await listarCameras();
-  sel.replaceChildren(new Option('padrão do modo', ''));
-  cams.forEach((c, i) => sel.append(new Option(c.label || `câmera ${i + 1}`, c.deviceId)));
-  sel.value = cfg.cameras[E.modo] || '';
+  if (relatar && E.cameras.length) {
+    const { entraram, sairam } = diferencaCameras(E.cameras, cams);
+    const lista = selecionaveis(cams), antes = selecionaveis(E.cameras);
+    entraram.forEach(c => logAgente({ nivel: 'sistema', texto: `◈ Câmera conectada: ${nomeCamera(c, lista.indexOf(c))}` }));
+    sairam.forEach(c => logAgente({ nivel: 'aviso', texto: `Câmera desconectada: ${nomeCamera(c, antes.indexOf(c))}` }));
+  }
+  E.cameras = cams;
+  const sel = $('selCamera');
+  const salva = cfg.cameras[E.modo] || '';
+  const escolhida = selecionaveis(cams).some(c => c.deviceId === salva) ? salva : '';
+  sel.replaceChildren(...opcoesCameras(cams, { ativaId: E.deviceId, escolhidaId: escolhida || null }).map(o => new Option(o.texto, o.valor)));
+  sel.value = escolhida;
+  $('infoCameras').textContent = resumoCameras(cams);
+  $('rCamera').textContent = nomeDoDispositivo(E.deviceId) || '--';
+  // no PC não existe frontal/traseira: o botão passa a percorrer as câmeras conectadas
+  $('btnTrocarCam').textContent = E.facing ? '⇄ FRONTAL/TRASEIRA' : '⇄ PRÓXIMA CÂMERA';
+}
+
+/** Câmera plugada ou removida com a operação em curso. */
+function observarCameras() {
+  let pendente = null;
+  navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+    clearTimeout(pendente);   // o Windows dispara vários eventos por troca: espera assentar
+    pendente = setTimeout(async () => {
+      await atualizarCameras({ relatar: true });
+      const ativaSumiu = E.rodando && E.deviceId && !selecionaveis(E.cameras).some(c => c.deviceId === E.deviceId);
+      if (ativaSumiu) {
+        delete cfg.cameras[E.modo]; salvarCfg();
+        try { await abrir(E.modo, { deviceId: null }); logAgente({ nivel: 'aviso', texto: 'A câmera em uso foi desconectada — passei para a automática.' }); }
+        catch (e) { logAgente({ nivel: 'aviso', texto: `Câmera: ${e.message}` }); }
+      }
+    }, 400);
+  });
+}
+
+async function trocarCamera() {
+  cfg.espelhar = null;
+  if (E.facing) {   // celular: alterna frontal/traseira
+    delete cfg.cameras[E.modo]; salvarCfg();
+    return abrir(E.modo, { deviceId: null, facing: E.facing === 'user' ? 'environment' : 'user' });
+  }
+  const proxima = proximaCamera(E.cameras, E.deviceId);
+  if (!proxima) { logAgente({ nivel: 'aviso', texto: 'Só uma câmera detectada. Conecte outra (USB) e ela aparece na lista sozinha.' }); return; }
+  cfg.cameras[E.modo] = proxima; salvarCfg();
+  await abrir(E.modo, { deviceId: proxima });
 }
 
 /* ═════════════════ GPS ═════════════════ */
 function iniciarGPS() {
   if (E.gps.watch != null || !navigator.geolocation) return;
   E.gps.watch = navigator.geolocation.watchPosition(
-    p => { E.gps.velocidade = p.coords.speed; E.gps.precisao = p.coords.accuracy; E.gps.em = agora(); E.gps.erro = null; },
+    p => { E.gps.velocidade = p.coords.speed; E.gps.precisao = p.coords.accuracy; E.gps.lat = p.coords.latitude; E.gps.lng = p.coords.longitude; E.gps.em = agora(); E.gps.erro = null; },
     err => { E.gps.erro = err.code === 1 ? 'negado' : 'sem sinal'; },
     { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 });
 }
@@ -255,7 +339,7 @@ function aplicarModoUI(modo) {
 }
 
 function reiniciarAnalise() {
-  E.rastreador.reiniciar(); E.motorista.reiniciar(); E.transito.reiniciar(); E.vigilancia.reiniciar();
+  E.rastreador.reiniciar(); E.motorista.reiniciar(); E.transito.reiniciar(); E.vigilancia.reiniciar(); reiniciarEscuro();
   E.trilhas = []; E.poses = []; E.rosto = null; E.saida = null;
   E.alertas.sincronizar([], agora() + 1e7);   // encerra condições do modo anterior
   E.sirene.desligar(); E.sirene.calar();
@@ -308,30 +392,169 @@ function laco() {
   if (t - E.ultimo.dom >= 250) { E.ultimo.dom = t; atualizarPaineis(t); }
 }
 
+/* ═════════════════ VISÃO NO ESCURO ═════════════════ */
+const ctx2d = cv => cv.getContext('2d', { willReadFrequently: true });
+
+/**
+ * ~10 Hz: mede a luz num quadro de 320 px e alimenta o sensor de movimento (só
+ * na vigilância — com a câmera andando, no carro, tudo "se move" e o fundo não
+ * existe). A curva de realce NÃO entra no sensor: ela muda devagar com a cena e
+ * isso viraria movimento falso; o piso do limiar é que se ajusta à faixa de luz.
+ */
+function amostrarLuz(v, t) {
+  if (t - E.ultimo.luz < 100) return;
+  E.ultimo.luz = t;
+  const W = 320, H = Math.max(1, Math.round((W * v.videoHeight) / v.videoWidth));
+  if (!E.cvLuz) E.cvLuz = document.createElement('canvas');
+  const cv = E.cvLuz;
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; E.cinza = new Uint8Array(W * H); }
+  const g = ctx2d(cv);
+  g.drawImage(v, 0, 0, W, H);
+  const cinza = paraCinza(g.getImageData(0, 0, W, H).data, W * H, E.cinza);
+  const antes = E.luz.escuro;
+  const luz = E.luz.atualizar(estatisticasLuz(cinza));
+  if (luz.escuro !== antes) {
+    logAgente({ nivel: luz.escuro ? 'aviso' : 'sistema', texto: luz.escuro
+      ? `◐ Pouca luz (${Math.round(luz.luz * 100)}%): realce automático ${cfg.realce ? 'LIGADO para a detecção' : 'desligado nas configurações'}${E.modo === 'sentinela' && cfg.movimento ? ' · sensor de movimento no escuro ativo' : ''}. Escuro total exige câmera infravermelha.`
+      : '◑ Luz normalizada — detecção na imagem original.' });
+  }
+  if (E.modo === 'sentinela' && cfg.movimento) {
+    const faixa = Math.max(1, E.luz.p.p98 - E.luz.p.p02);
+    const r = E.mov.processar(cinza, W, H, t, { difMin: Math.max(3, Math.round((CFG_MOVIMENTO.difMin * faixa) / 200)) });
+    if (r.trocaDeLuz) logAgente({ nivel: 'info', texto: '◑ Troca brusca de luz na cena — sensor de movimento reajustando (1,5 s).' });
+    E.cena = { escuro: luz.escuro, movimento: r.movimento, estaticos: r.estaticos, sigma: r.sigma };
+  } else E.cena = { escuro: luz.escuro, movimento: [], estaticos: [] };
+}
+
+/** Fonte para os detectores: o vídeo, ou — no escuro — o quadro realçado (uma vez por quadro). */
+function fonteDeteccao(v) {
+  if (!(cfg.realce && E.luz.escuro && E.luz.curva)) return v;
+  if (E.realcadoEm === E.tVideo && E.cvRealce) return E.cvRealce;
+  const W = Math.min(640, v.videoWidth), H = Math.max(1, Math.round((W * v.videoHeight) / v.videoWidth));
+  if (!E.cvRealce) E.cvRealce = document.createElement('canvas');
+  const cv = E.cvRealce;
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  const g = ctx2d(cv);
+  g.drawImage(v, 0, 0, W, H);
+  const img = g.getImageData(0, 0, W, H);
+  aplicarCurvaRGBA(img.data, E.luz.curva.lut);
+  g.putImageData(img, 0, 0);
+  E.realcadoEm = E.tVideo;
+  return cv;
+}
+
+function reiniciarEscuro() { E.mov.reiniciar(); E.luz.reiniciar(); E.cena = null; E.realcadoEm = -1; E.fauna.reiniciar(); }
+
+/* ═════════════════ FAUNA NA PISTA ═════════════════ */
+const dimsDe = f => ({ W: f.videoWidth || f.width, H: f.videoHeight || f.height });
+
+/** Recorte normalizado da fonte num canvas (largura máxima `maxW`, proporção preservada). */
+function recortar(fonte, ret, maxW) {
+  const { W, H } = dimsDe(fonte);
+  const sx = Math.max(0, Math.round(ret.x * W)), sy = Math.max(0, Math.round(ret.y * H));
+  const sw = Math.max(1, Math.min(W - sx, Math.round(ret.w * W))), sh = Math.max(1, Math.min(H - sy, Math.round(ret.h * H)));
+  const esc = Math.min(1, maxW / sw);
+  const dw = Math.max(1, Math.round(sw * esc)), dh = Math.max(1, Math.round(sh * esc));
+  if (!E.cvRecorte) E.cvRecorte = document.createElement('canvas');
+  const cv = E.cvRecorte;
+  if (cv.width !== dw || cv.height !== dh) { cv.width = dw; cv.height = dh; }
+  ctx2d(cv).drawImage(fonte, sx, sy, sw, sh, 0, 0, dw, dh);
+  return cv;
+}
+
+/** Caixa do alvo com folga e QUADRADA em pixels — o classificador vê 224×224. */
+function recorteQuadrado(b, aspecto, folga = 0.2) {
+  const lado = Math.max(b.w * aspecto, b.h) * (1 + folga);   // em alturas de quadro
+  const w = Math.min(1, lado / aspecto), h = Math.min(1, lado);
+  const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+  return { x: Math.max(0, Math.min(1 - w, cx - w / 2)), y: Math.max(0, Math.min(1 - h, cy - h / 2)), w, h };
+}
+
+/** ~5 Hz, no máximo 2 classificações: refino dos animais detectados e, no que sobrar, ladrilhos do corredor. */
+function faunaDoQuadro(fonte, t, aspecto) {
+  const P = E.percepcao;
+  if (!P.tarefas.classificador) return null;
+  if (t - E.ultimo.fauna >= 200) {
+    E.ultimo.fauna = t;
+    let feitas = 0;
+    // classes ensinadas no laboratório usam o embedder; alterna com o classificador para caber no orçamento
+    const comLab = E.lab.temAtivo('classe') && garantirEmbedder() && P.tarefas.embedder;
+    E.faunaVez = !E.faunaVez;
+    const usarLab = comLab && E.faunaVez;
+    const animais = E.trilhas.filter(tr => tipoDe(tr.classe) === 'animal' && tr.hits >= 3 && E.fauna.precisaRefino(tr.id, t));
+    for (const tr of animais.slice(0, 2)) {
+      const img = recortar(fonte, recorteQuadrado(tr, aspecto), 224);
+      if (usarLab) {
+        const v = P.embedding(img);
+        const m = v && melhorConceito(E.lab.conceitos, v, 'classe');
+        if (m) E.fauna.registrarRefinoPersonalizado(tr.id, m, t); else { const r = P.classificar(img); if (r) E.fauna.registrarRefino(tr.id, r, t); }
+      } else { const r = P.classificar(img); if (r) E.fauna.registrarRefino(tr.id, r, t); }
+      feitas++;
+    }
+    const lad = ladrilhosCorredor(E.transito.cfg.roi, aspecto);
+    for (const i of E.fauna.proximosLadrilhos(lad.length, Math.max(0, 2 - feitas))) {
+      const img = recortar(fonte, lad[i], 224);
+      if (usarLab) {
+        const v = P.embedding(img);
+        const m = v && melhorConceito(E.lab.conceitos, v, 'classe');
+        if (m) { E.fauna.registrarLadrilhoPersonalizado(i, lad[i], m, t); continue; }
+      }
+      const r = P.classificar(img);
+      if (r) E.fauna.registrarLadrilho(i, lad[i], r, t);
+    }
+    E.fauna.esquecer(new Set(E.trilhas.map(tr => tr.id)));
+  }
+  return { refino: id => E.fauna.refino(id), achados: E.fauna.achados(t) };
+}
+
 function processar(v, t) {
   const t0 = performance.now();
   const aspecto = v.videoWidth / v.videoHeight;
   E.rastreador.aspecto = aspecto;
   const P = E.percepcao;
+  amostrarLuz(v, t);
+  const fonte = fonteDeteccao(v);
   let saida;
   if (E.modo === 'sentinela') {
-    if (t - E.ultimo.objetos >= 60) { E.ultimo.objetos = t; const d = P.objetos(v, t); if (d) E.trilhas = E.rastreador.atualizar(d, t); }
+    if (t - E.ultimo.objetos >= 60) { E.ultimo.objetos = t; const d = P.objetos(fonte, t); if (d) E.trilhas = E.rastreador.atualizar(d, t); }
     // aparelho lento: a pose cede espaço — objetos alimentam intrusão e abandono, que são prioridade
-    if (cfg.poses && P.tarefas.pose && t - E.ultimo.pose >= Math.max(110, 1.5 * E.infMs)) { E.ultimo.pose = t; E.poses = P.poses(v, t) || []; }
+    if (cfg.poses && P.tarefas.pose && t - E.ultimo.pose >= Math.max(110, 1.5 * E.infMs)) { E.ultimo.pose = t; E.poses = P.poses(fonte, t) || []; }
     if (!cfg.poses) E.poses = [];
-    saida = E.vigilancia.processar({ t, trilhas: E.trilhas, poses: E.poses, zonas: cfg.zonas, aspecto });
+    reconhecerLocal(fonte, t);
+    saida = E.vigilancia.processar({ t, trilhas: E.trilhas, poses: E.poses, zonas: cfg.zonas, aspecto, cena: cfg.movimento ? E.cena : null, local: E.localAtivo });
+    const cl = saida.condicoes.find(c => c.chave.startsWith('local:'));
+    // guarda o quadro do alarme: "foi falso" vira exemplo NEGATIVO com um toque
+    if (cl && E.vetorCena && (!E.ultimoAlarmeLocal || E.ultimoAlarmeLocal.chave !== cl.chave || t - E.ultimoAlarmeLocal.t > 10000)) {
+      E.ultimoAlarmeLocal = { chave: cl.chave, conceitoId: E.localAtivo.conceito.id, vetor: E.vetorCena, t, miniatura: miniaturaDe(fonte) };
+    }
+    for (const b of saida.absorver || []) E.mov.absorver(b);   // alteração já alertada volta a ser fundo
   } else if (E.modo === 'motorista') {
-    E.rosto = P.rosto(v, t);
+    E.rosto = P.rosto(fonte, t);
     let celular = null;
     if (P.tarefas.objetos && t - E.ultimo.objetos >= 500) {
       E.ultimo.objetos = t;
-      celular = celularJuntoAoRosto(P.objetos(v, t) || [], E.rosto?.pontos);
+      celular = celularJuntoAoRosto(P.objetos(fonte, t) || [], E.rosto?.pontos);
     }
+    // esqueleto (~8 Hz): mãos nos olhos e no peito — gatilhos da checagem de saúde
+    if (P.tarefas.pose && t - E.ultimo.pose >= Math.max(120, 1.5 * E.infMs)) { E.ultimo.pose = t; E.poses = P.poses(fonte, t) || []; }
     E.trilhas = [];
-    saida = E.motorista.processar({ t, rosto: E.rosto, aspecto, celular, velocidade: cfg.gpsMov ? velocidadeGPS() : null });
+    saida = E.motorista.processar({ t, rosto: E.rosto, aspecto, celular, velocidade: cfg.gpsMov ? velocidadeGPS() : null, escuro: E.luz.escuro,
+      esqueleto: esqueletoDoCondutor(E.poses, E.rosto?.pontos, aspecto) });
+    if (saida.metricas.checagem && !E.checagem.ativa) iniciarChecagem(saida.metricas.checagem, saida);
   } else {
-    if (t - E.ultimo.objetos >= 45) { E.ultimo.objetos = t; const d = P.objetos(v, t); if (d) E.trilhas = E.rastreador.atualizar(d, t); }
-    saida = E.transito.processar({ t, trilhas: E.trilhas, aspecto, velocidade: velocidadeGPS() });
+    if (t - E.ultimo.objetos >= 45) {
+      E.ultimo.objetos = t;
+      let d = P.objetos(fonte, t);
+      // 1 a cada 3 passadas, se o aparelho aguenta: o detector olha de novo só o trecho
+      // DISTANTE do corredor, em resolução maior — cão pequeno e galinha a 40 m somem no quadro inteiro
+      if (d && ++E.chamadasDet % 3 === 0 && E.infMs < 80) {
+        const ret = recorteDistante(E.transito.cfg.roi, aspecto);
+        const dr = P.objetos(recortar(fonte, ret, 640), t);
+        if (dr) d = fundirDeteccoes(d, dr, ret);
+      }
+      if (d) E.trilhas = E.rastreador.atualizar(d, t);
+    }
+    saida = E.transito.processar({ t, trilhas: E.trilhas, aspecto, velocidade: velocidadeGPS(), fauna: faunaDoQuadro(fonte, t, aspecto) });
   }
   E.infMs = 0.85 * E.infMs + 0.15 * (performance.now() - t0);
   E.quadrosEm.push(t);
@@ -385,11 +608,440 @@ function tratarAlertas(saida, t) {
   }
   for (const c of encerradas) logAgente({ nivel: 'info', texto: `✓ NORMALIZADO: ${c.titulo}` });
 
+  // durante a checagem de saúde, sirene e voz geral calam: o microfone precisa ouvir o motorista
+  if (E.checagem.ativa) { E.sirene.desligar(); return; }
   if (E.alertas.sireneLigada(t)) E.sirene.ligar(); else E.sirene.desligar();
   if (!E.sirene.falando) {
     const f = E.alertas.proximaFala(t);
     if (f) E.sirene.falar(f.texto, { urgente: f.nivel === 'critico' });
   }
+}
+
+/* ═════════════════ CHECAGEM DE SAÚDE ═════════════════
+   Máquina de estados em saude.js (pura, testada); aqui só a execução das
+   ações: falar, ouvir, avisar o responsável pelo relé, conversar com o agente.
+   Uma ação por vez (fila de promessas); um botão interrompe a fala/escuta. */
+
+const releUrl = () => cfg.alerta.url || E.status?.rele?.url || (E.servidorRele ? 'api/spy/alerta' : '');
+const releConfigurado = () => !!(releUrl() && cfg.alerta.token);
+const origensRele = () => (E.status?.rele?.origem ? [E.status.rele.origem] : []);
+
+function estadoRele() {
+  const sel = $('seloRele');
+  if (!sel) return;
+  if (!releConfigurado()) { sel.textContent = 'SEM RELÉ'; sel.className = 'selo aviso'; return; }
+  if (!releLiberado(releUrl(), origensRele())) { sel.textContent = 'RELÉ BLOQUEADO (CSP)'; sel.className = 'selo critico'; return; }
+  sel.textContent = 'RELÉ OK'; sel.className = 'selo';
+}
+
+/** Localização para o alerta: a do GPS em uso (se recente) ou uma leitura rápida (≤ 5 s). */
+async function localAtual() {
+  if (!cfg.alerta.local) return null;
+  if (E.gps.lat != null && E.gps.em != null && agora() - E.gps.em < 60000) return { lat: E.gps.lat, lng: E.gps.lng, precisao: E.gps.precisao };
+  if (!navigator.geolocation) return null;
+  return new Promise(ok => navigator.geolocation.getCurrentPosition(
+    p => ok({ lat: p.coords.latitude, lng: p.coords.longitude, precisao: p.coords.accuracy }),
+    () => ok(null), { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 }));
+}
+
+function filaAlertas() {
+  if (E.filaAlertas) return E.filaAlertas;
+  E.filaAlertas = criarFila({
+    enviar: item => enviarAlerta({ url: item.url, token: item.token, alerta: item.alerta }),
+    aoResultado: (item, r) => {
+      const txt = resumoEnvio(r);
+      if (item.teste) { logAgente({ nivel: r?.ok ? 'sistema' : 'aviso', texto: `◈ TESTE DO ALERTA: ${r?.ok ? 'entregue' : 'falhou'} — ${txt}` }); $('infoSaude').textContent = `Teste: ${txt}`; return; }
+      if (item.alerta.tipo === 'alerta_saude' && E.saude) E.saude.envio = r;
+      logAgente({ nivel: r?.ok ? 'critico' : 'aviso', texto: `${r?.ok ? '✚ RESPONSÁVEL AVISADO' : '✖ FALHA AO AVISAR O RESPONSÁVEL'} (${item.alerta.tipo === 'atualizacao' ? 'atualização' : 'alerta'}) — ${txt}` });
+      if (E.saude?.aberta) $('saudeEnvio').textContent = r?.ok ? `Responsável avisado: ${txt}` : `NÃO foi possível avisar: ${txt}. Ligue 192 ou para o responsável.`;
+    },
+  });
+  return E.filaAlertas;
+}
+
+/** Monta e enfileira um alerta (saúde, atualização ou teste). */
+async function despacharAlerta(dados, { teste = false } = {}) {
+  if (!releConfigurado()) {
+    const msg = 'Relé não configurado: o responsável NÃO foi avisado automaticamente. Use LIGAR 192 ou LIGAR PARA O RESPONSÁVEL.';
+    logAgente({ nivel: 'aviso', texto: msg });
+    if (E.saude?.aberta) $('saudeEnvio').textContent = msg;
+    return;
+  }
+  if (!releLiberado(releUrl(), origensRele())) {
+    const msg = `O endereço do relé (${new URL(releUrl(), location.href).origin}) não está liberado nesta publicação (CSP). Defina a variável SPY_RELE_URL no GitHub e publique de novo — ver ALERTAS.md.`;
+    logAgente({ nivel: 'aviso', texto: msg });
+    if (E.saude?.aberta) $('saudeEnvio').textContent = msg;
+    if (teste) $('infoSaude').textContent = msg;
+    return;
+  }
+  const v = velocidadeGPS();
+  const alerta = montarAlerta({ ...dados, motorista: cfg.alerta.motorista, veiculo: cfg.alerta.veiculo,
+    local: await localAtual(), velocidadeKmh: v != null ? v * 3.6 : null });
+  if (teste) Object.assign(alerta, { tipo: 'teste', gravidade: 'info', situacao: 'teste do alerta de saúde — nenhuma ação necessária' });
+  if (E.saude?.aberta && !teste) $('saudeEnvio').textContent = navigator.onLine === false ? 'Sem internet: o aviso sai assim que a conexão voltar…' : 'Avisando o responsável…';
+  filaAlertas().adicionar({ url: new URL(releUrl(), location.href).href, token: cfg.alerta.token, alerta, teste });
+}
+
+function abrirSaude(motivo) {
+  const d = $('dlgSaude');
+  E.saude = { motivo, aberta: true, envio: null, ia: { historico: [], turnos: 0, sintomas: new Set() }, inicio: agora() };
+  $('saudeMotivo').textContent = `Sinal observado: ${MOTIVOS[motivo]?.titulo || motivo}`;
+  $('saudeFala').textContent = ''; $('saudeOuvido').textContent = ''; $('saudeEnvio').textContent = ''; $('saudeSintomas').replaceChildren();
+  const tel = String(cfg.alerta.telefone || '').replace(/[^\d+]/g, '');
+  const lnk = $('lnkResponsavel');
+  lnk.hidden = tel.length < 8; if (!lnk.hidden) lnk.href = `tel:${tel}`;
+  if (!d.open) { try { d.showModal(); } catch { d.setAttribute('open', ''); } }
+  E.sirene.desligar();
+}
+
+function fecharSaude() {
+  const d = $('dlgSaude');
+  if (d.open) d.close();
+  if (E.saude) E.saude.aberta = false;
+  $('saudeOuvindo').hidden = true;
+}
+
+/** Ouve com possibilidade de interrupção por botão. */
+async function ouvirMotorista(ms) {
+  if (!escutaDisponivel()) { $('saudeOuvido').textContent = 'Este navegador não reconhece fala — use os botões.'; await new Promise(r => setTimeout(r, ms)); return null; }
+  $('saudeOuvindo').hidden = false;
+  E.escuta = new AbortController();
+  const r = await ouvir({ ms, sinal: E.escuta.signal });
+  E.escuta = null;
+  $('saudeOuvindo').hidden = true;
+  $('saudeOuvido').textContent = r?.texto ? `Ouvi: "${r.texto}"` : '(sem resposta)';
+  return r?.texto || null;
+}
+
+/**
+ * Executa as ações da máquina de estados, em ordem. `g` é a GERAÇÃO da conversa:
+ * botão e fechar avançam a geração, e a cadeia antiga para no próximo passo.
+ * (Uma flag booleana de interrupção foi descartada: quando o fechar chegava
+ * depois de a cadeia terminar, ela ficava pendurada e ENGOLIA a checagem
+ * seguinte — visto no teste E2E.)
+ */
+async function rodarAcoesSaude(acoes, g) {
+  for (const a of acoes) {
+    if (g !== E.saudeGeracao) return;
+    switch (a.tipo) {
+      case 'mostrar': if (!E.saude?.aberta) abrirSaude(E.checagem.motivo); break;
+      case 'falar': $('saudeFala').textContent = a.texto; await E.sirene.falar(a.texto, { urgente: true, forcar: true }); break;
+      case 'ouvir': {
+        const texto = await ouvirMotorista(a.ms);
+        if (g !== E.saudeGeracao || !E.checagem.ativa) return;
+        return rodarAcoesSaude(E.checagem.aoOuvir(texto, agora()), g);
+      }
+      case 'escalar': {
+        registrarIncidente({ chave: 'saude', nivel: 'critico', titulo: a.semResposta ? 'MOTORISTA NÃO RESPONDEU À CHECAGEM' : 'MOTORISTA PEDIU AJUDA',
+          detalhe: `${MOTIVOS[a.motivo]?.titulo || a.motivo}${a.resposta ? ` — "${a.resposta}"` : ''}` }, evidencia());
+        logAgente({ nivel: 'critico', texto: `✚ ALERTA DE SAÚDE: ${a.semResposta ? 'sem resposta' : `resposta "${a.resposta}"`} — avisando o responsável.` });
+        despacharAlerta({ motivo: a.motivo, resposta: a.resposta, semResposta: a.semResposta });   // em paralelo com a fala
+        break;
+      }
+      case 'atualizar': despacharAlerta({ motivo: E.checagem.motivo || 'manual', atualizacao: a.texto }); break;
+      case 'conversar': return conversarSaude(a.texto, g);
+      case 'fechar': {
+        if (a.bem) logAgente({ nivel: 'sistema', texto: `◈ Checagem de saúde: o motorista respondeu que está bem (${MOTIVOS[a.motivo]?.titulo || a.motivo}).` });
+        if (a.semResposta) logAgente({ nivel: 'aviso', texto: '◈ Checagem de saúde sem resposta — aviso ao responsável desligado nas configurações.' });
+        E.checagem.encerrar(); fecharSaude(); return;
+      }
+      default: break;
+    }
+  }
+}
+
+const executarSaude = acoes => {
+  const g = E.saudeGeracao;
+  E.filaSaude = E.filaSaude.then(() => rodarAcoesSaude(acoes, g)).catch(e => logAgente({ nivel: 'aviso', texto: `Checagem de saúde: ${e.message}` }));
+  return E.filaSaude;
+};
+
+function iniciarChecagem(motivo, saida) {
+  if (E.pausado) return;
+  const acoes = E.checagem.iniciar(motivo, agora());
+  if (!acoes.length) return;
+  logAgente({ nivel: 'critico', texto: `✚ CHECAGEM DE SAÚDE: ${MOTIVOS[motivo]?.titulo || motivo} — perguntando ao motorista.` });
+  E.sirene.vibrar([300, 120, 300]);
+  if (E.saude) E.saude.sinais = (saida?.condicoes || []).map(c => c.titulo);
+  executarSaude(acoes);
+}
+
+/** Botões da tela: interrompem a fala e a escuta em curso e passam à frente. */
+function interromperSaude() { E.saudeGeracao++; E.sirene.calar(); E.escuta?.abort(); }
+
+function botaoSaude(tipo) {
+  if (E.checagem.ativa) interromperSaude();
+  const acoes = E.checagem.aoBotao(tipo, agora());
+  if (tipo === 'ajuda' && !E.saude?.aberta) abrirSaude(E.checagem.motivo || 'manual');
+  executarSaude(acoes);
+}
+
+/**
+ * Depois do aviso ao responsável: o agente conversa (até 4 voltas) para colher
+ * sintomas e orientar segurança; sintomas novos viram atualização ao responsável.
+ * Sem agente configurado, frases fixas e os botões.
+ */
+async function conversarSaude(textoInicial, g) {
+  const s = E.saude;
+  if (!s) return;
+  let transcricao = textoInicial;
+  for (let volta = 0; volta < 4 && E.checagem.ativa; volta++) {
+    if (g !== E.saudeGeracao) return;
+    let fala = 'Se puder, me diga o que está sentindo.';
+    if (E.agente.pronto) {
+      try {
+        const r = await turnoChecagem({
+          historico: s.ia.historico,
+          entrada: pedidoChecagem({ motivo: s.motivo, sinais: s.sinais || [], transcricao, responsavelAvisado: !!s.envio?.ok, semResposta: !transcricao && volta === 0 }),
+          enviar: (tipo, msgs) => E.agente.enviar(tipo, msgs, { signal: AbortSignal.timeout(20000) }),
+        });
+        contabilizar(r.uso);
+        if (!r.recusa) {
+          s.ia.historico = r.mensagens;
+          fala = r.resposta.fala;
+          const novos = r.resposta.sintomas.filter(x => !s.ia.sintomas.has(x));
+          novos.forEach(x => s.ia.sintomas.add(x));
+          if (novos.length) {
+            $('saudeSintomas').replaceChildren(...[...s.ia.sintomas].map(x => Object.assign(document.createElement('li'), { textContent: x })));
+            despacharAlerta({ motivo: s.motivo, atualizacao: `Sintomas relatados pelo motorista: ${[...s.ia.sintomas].join(', ')}${r.resposta.estado === 'emergencia' ? ' — sinais de EMERGÊNCIA (orientado a ligar 192)' : ''}` });
+          }
+          if (g !== E.saudeGeracao) return;
+          if (r.resposta.encerrar && r.resposta.estado === 'bem') return rodarAcoesSaude(E.checagem.aoBotao('bem', agora()), g);
+          if (r.resposta.encerrar) { $('saudeFala').textContent = fala; await E.sirene.falar(fala, { urgente: true, forcar: true }); return; }
+        }
+      } catch (e) { logAgente({ nivel: 'aviso', texto: `Agente na checagem: ${e.message} — seguindo com frases fixas.` }); }
+    }
+    $('saudeFala').textContent = fala;
+    await E.sirene.falar(fala, { urgente: true, forcar: true });
+    if (g !== E.saudeGeracao) return;
+    const ouvido = await ouvirMotorista(10000);
+    if (g !== E.saudeGeracao || !E.checagem.ativa) return;
+    if (ouvido && interpretarResposta(ouvido) === 'bem') return rodarAcoesSaude(E.checagem.aoOuvir(ouvido, agora()), g);
+    transcricao = ouvido;
+  }
+}
+
+async function testarAlerta() {
+  if (!releConfigurado()) { $('infoSaude').textContent = 'Configure o relé (⚙ RESPONSÁVEL E RELÉ) antes de testar.'; return; }
+  $('infoSaude').textContent = 'Enviando mensagem de TESTE ao responsável…';
+  await despacharAlerta({ motivo: 'manual' }, { teste: true });
+}
+
+function configurarAlerta() {
+  const d = $('dlgAlerta');
+  $('inpMotorista').value = cfg.alerta.motorista; $('inpVeiculo').value = cfg.alerta.veiculo;
+  $('inpReleUrl').value = cfg.alerta.url; $('inpReleToken').value = cfg.alerta.token; $('inpTelResponsavel').value = cfg.alerta.telefone;
+  $('chkSemResposta').checked = cfg.alerta.semResposta; $('chkLocalAlerta').checked = cfg.alerta.local;
+  $('alertaErro').hidden = true;
+  const origem = E.status?.rele?.origem;
+  $('infoRele').textContent = E.servidorRele
+    ? 'Este servidor tem relé próprio: deixe o endereço em branco e use o token do RELE_TOKENS do .env.'
+    : origem ? `Esta publicação libera o relé em ${origem}.` : 'Esta publicação ainda não libera nenhum relé externo (variável SPY_RELE_URL no GitHub — ver ALERTAS.md).';
+  d.showModal();
+}
+
+/* ═════════════════ LABORATÓRIO DE MODELO ═════════════════ */
+const MODELO_EMBEDDING = 'mobilenet_v3_large';
+
+/** Carrega o embedder sob demanda (10 MB, SHA-256 conferido); devolve true se já está pronto. */
+function garantirEmbedder() {
+  if (E.percepcao?.tarefas.embedder) return true;
+  if (!E.percepcao?.mp || E.carregandoEmbedder) return false;
+  E.carregandoEmbedder = E.percepcao.garantir('embedder')
+    .then(() => { logAgente({ nivel: 'sistema', texto: '◈ Laboratório: modelo de características carregado — reconhecimento por fotos ativo.' }); renderLab(); })
+    .catch(e => logAgente({ nivel: 'aviso', texto: `Laboratório: não carregou o modelo de características (${e.message}).` }))
+    .finally(() => { E.carregandoEmbedder = null; });
+  return false;
+}
+
+/** ~1 Hz: a cena é um local restrito ensinado? Histerese: 2 leituras para entrar, 3 para sair. */
+function reconhecerLocal(fonte, t) {
+  if (!E.lab.temAtivo('local')) { E.localAtivo = null; return; }
+  if (t - E.ultimo.local < 1000 || !garantirEmbedder()) return;
+  E.ultimo.local = t;
+  const v = E.percepcao.embedding(fonte);
+  if (!v) return;
+  E.vetorCena = v;
+  const m = melhorConceito(E.lab.conceitos, v, 'local');
+  if (m) {
+    E.localSeq = Math.max(1, E.localSeq + 1);
+    if (E.localSeq >= 2 && (!E.localAtivo || E.localAtivo.conceito.id !== m.conceito.id)) {
+      logAgente({ nivel: 'sistema', texto: `◈ Local restrito reconhecido: ${m.conceito.nome} (similaridade ${(m.similaridade * 100).toFixed(0)}%) — pessoa na cena será intrusão.` });
+    }
+    if (E.localSeq >= 2) E.localAtivo = m;
+  } else {
+    E.localSeq = Math.min(-1, E.localSeq - 1);
+    if (E.localSeq <= -3 && E.localAtivo) { logAgente({ nivel: 'info', texto: `◈ Saiu do local restrito ${E.localAtivo.conceito.nome}.` }); E.localAtivo = null; }
+  }
+}
+
+/** Miniatura JPEG (≈96 px de altura) para a galeria e o retorno de falso alarme. */
+function miniaturaDe(fonte) {
+  const { W, H } = dimsDe(fonte);
+  if (!W || !H) return null;
+  const h = 96, w = Math.max(1, Math.round((W * h) / H));
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  cv.getContext('2d').drawImage(fonte, 0, 0, w, h);
+  return cv.toDataURL('image/jpeg', 0.6);
+}
+
+/** Vetor + miniatura de uma imagem (arquivo ou quadro da câmera). */
+async function exemploDe(origem) {
+  let img = origem;
+  if (origem instanceof Blob) {
+    const bmp = await createImageBitmap(origem);
+    const esc = Math.min(1, 640 / Math.max(bmp.width, bmp.height));
+    img = document.createElement('canvas');
+    img.width = Math.max(1, Math.round(bmp.width * esc)); img.height = Math.max(1, Math.round(bmp.height * esc));
+    img.getContext('2d').drawImage(bmp, 0, 0, img.width, img.height);
+    bmp.close?.();
+  }
+  const vetor = E.percepcao.embedding(img);
+  if (!vetor) throw new Error('o modelo de características não respondeu');
+  return { vetor, miniatura: miniaturaDe(img) };
+}
+
+async function prepararEmbedderComAviso() {
+  if (E.percepcao?.tarefas.embedder) return true;
+  $('labStatus').textContent = 'Carregando o modelo de características (10 MB, só na primeira vez)…';
+  garantirEmbedder();
+  try { await E.carregandoEmbedder; } catch { /* avisado no registro */ }
+  $('labStatus').textContent = E.percepcao?.tarefas.embedder ? '' : 'Não foi possível carregar o modelo de características.';
+  return !!E.percepcao?.tarefas.embedder;
+}
+
+const NOME_QUALIDADE = { insuficiente: 'INSUFICIENTE — mínimo de 3 fotos', baixa: 'BAIXA — fotos pouco consistentes ou negativas parecidas demais', boa: 'BOA', otima: 'ÓTIMA' };
+
+/** Resumo no painel (barato; roda a cada 2 s). Não toca no diálogo — re-renderizar lá tiraria o foco do teclado. */
+function renderResumoLab() {
+  const locais = E.lab.conceitos.filter(c => c.tipo === 'local').length, classes = E.lab.conceitos.length - locais;
+  $('labResumo').textContent = E.lab.conceitos.length
+    ? `${locais} local(is) restrito(s) · ${classes} classe(s) nova(s)${E.localAtivo ? ` · reconhecendo agora: ${E.localAtivo.conceito.nome}` : ''}`
+    : 'Nenhum conceito ensinado ainda.';
+}
+
+function renderLab() {
+  renderResumoLab();
+  if (!$('dlgLab').open) return;
+  $('labLista').replaceChildren(...E.lab.conceitos.map(c => {
+    const k = calibrar(c), li = document.createElement('li'), b = document.createElement('button');
+    b.type = 'button'; b.setAttribute('aria-pressed', String(c.id === E.labSel));
+    const nome = document.createElement('span'); nome.textContent = `${c.tipo === 'local' ? '⌂' : '◆'} ${c.nome}`;
+    const info = document.createElement('small'); info.textContent = `${k.positivos}+ / ${k.negativos}− · ${k.qualidade}`;
+    b.append(nome, info);
+    b.addEventListener('click', () => { E.labSel = c.id; renderLab(); });
+    li.append(b); return li;
+  }));
+  const c = E.lab.obter(E.labSel);
+  $('labDetalhe').hidden = !c;
+  if (!c) return;
+  const k = calibrar(c);
+  $('labSelNome').textContent = `${c.tipo === 'local' ? 'LOCAL RESTRITO' : `CLASSE NOVA (porte ${c.porte})`}: ${c.nome}`;
+  $('labQualidade').textContent = `Qualidade: ${NOME_QUALIDADE[k.qualidade]}${k.acerto != null ? ` · acerto na validação ${(k.acerto * 100).toFixed(0)}%` : ''}`
+    + `${k.simPositivos != null ? ` · fotos do mesmo ${c.tipo === 'local' ? 'local' : 'tipo'}: ${(k.simPositivos * 100).toFixed(0)}%` : ''}${k.simNegativos != null ? ` · negativas: ${(k.simNegativos * 100).toFixed(0)}%` : ''}`
+    + ` · limiar ${c.limiarManual ? 'manual' : 'automático'}.`;
+  $('rngLabLimiar').value = String(Math.round(c.limiar * 100)); $('outLabLimiar').textContent = `${Math.round(c.limiar * 100)}%`;
+  $('btnLabFalso').disabled = !(E.ultimoAlarmeLocal && E.ultimoAlarmeLocal.conceitoId === c.id);
+  $('labGaleria').replaceChildren(...c.exemplos.map(e => {
+    const f = document.createElement('figure'); f.className = e.rotulo;
+    if (e.miniatura) { const im = document.createElement('img'); im.src = e.miniatura; im.alt = `${e.rotulo} (${e.origem})`; f.append(im); }
+    const cap = document.createElement('figcaption'); cap.textContent = `${e.rotulo === 'negativo' ? '− negativa' : '+ positiva'}`;
+    const x = document.createElement('button'); x.type = 'button'; x.textContent = '✕'; x.setAttribute('aria-label', `remover foto ${e.rotulo}`);
+    x.addEventListener('click', async () => { removerExemplo(c, e.id); await E.lab.salvar(c); renderLab(); });
+    f.append(cap, x); return f;
+  }));
+}
+
+async function adicionarExemplos(origens, rotulo, origem) {
+  const c = E.lab.obter(E.labSel);
+  if (!c) { $('labStatus').textContent = 'Escolha (ou crie) um local ou classe na lista antes de enviar fotos.'; return; }
+  if (!origens.length) return;
+  if (!(await prepararEmbedderComAviso())) return;
+  let ok = 0, erros = 0;
+  for (const o of origens) {
+    try { const ex = await exemploDe(o); adicionarExemplo(c, { ...ex, rotulo, origem }); ok++; }
+    catch { erros++; }
+  }
+  await E.lab.salvar(c);
+  $('labStatus').textContent = `${ok} foto(s) ${rotulo === 'negativo' ? 'negativa(s) ' : ''}adicionada(s)${erros ? ` · ${erros} arquivo(s) não lido(s) — use JPEG, PNG ou WebP` : ''}.`;
+  renderLab();
+}
+
+function quadroAtual() {
+  const v = $('video');
+  if (!v.videoWidth) return null;
+  const cv = document.createElement('canvas'); cv.width = v.videoWidth; cv.height = v.videoHeight;
+  cv.getContext('2d').drawImage(v, 0, 0);
+  return cv;
+}
+
+function ligarLaboratorio() {
+  $('btnLab').addEventListener('click', () => { $('dlgLab').showModal(); renderLab(); });
+  $('btnLabFechar').addEventListener('click', () => $('dlgLab').close());
+  $('btnLabCriar').addEventListener('click', async () => {
+    try {
+      const c = novoConceito({ nome: $('labNome').value, tipo: $('labTipo').value, porte: $('labPorte').value });
+      await E.lab.salvar(c); E.labSel = c.id; $('labNome').value = '';
+      $('labStatus').textContent = `${c.nome} criado. Agora envie as fotos.`;
+      renderLab();
+    } catch (e) { $('labStatus').textContent = e.message; }
+  });
+  $('btnLabFotos').addEventListener('click', () => $('labArquivos').click());
+  $('btnLabNegativas').addEventListener('click', () => $('labArquivosNeg').click());
+  $('labArquivos').addEventListener('change', async ev => { await adicionarExemplos([...ev.target.files], 'positivo', 'arquivo'); ev.target.value = ''; });
+  $('labArquivosNeg').addEventListener('change', async ev => { await adicionarExemplos([...ev.target.files], 'negativo', 'arquivo'); ev.target.value = ''; });
+  const capturar = rotulo => { const q = quadroAtual(); if (!q) { $('labStatus').textContent = 'Inicie a operação para capturar da câmera.'; return; } adicionarExemplos([q], rotulo, 'camera'); };
+  $('btnLabCapturar').addEventListener('click', () => capturar('positivo'));
+  $('btnLabCapturarNeg').addEventListener('click', () => capturar('negativo'));
+  $('btnLabTestar').addEventListener('click', async () => {
+    const c = E.lab.obter(E.labSel), q = quadroAtual();
+    if (!c || !q) { $('labTeste').textContent = 'Inicie a operação e escolha um conceito para testar.'; return; }
+    if (!(await prepararEmbedderComAviso())) return;
+    const r = reconhecer(c, E.percepcao.embedding(q));
+    $('labTeste').textContent = `Quadro atual: similaridade ${(r.similaridade * 100).toFixed(0)}% (limiar ${(r.limiar * 100).toFixed(0)}%${r.negativo ? `, negativa mais parecida ${(r.negativo * 100).toFixed(0)}%` : ''}) → ${r.ok ? `RECONHECIDO como ${c.nome}` : 'não reconhecido'}.`;
+  });
+  $('btnLabFalso').addEventListener('click', async () => {
+    const c = E.lab.obter(E.labSel), a = E.ultimoAlarmeLocal;
+    if (!c || !a || a.conceitoId !== c.id) return;
+    adicionarExemplo(c, { vetor: a.vetor, rotulo: 'negativo', miniatura: a.miniatura, origem: 'retorno' });
+    await E.lab.salvar(c); E.ultimoAlarmeLocal = null;
+    $('labStatus').textContent = `O quadro do último alarme virou exemplo NEGATIVO de ${c.nome} — a mesma cena não dispara de novo.`;
+    logAgente({ nivel: 'sistema', texto: `◈ Laboratório: falso alarme de ${c.nome} registrado como exemplo negativo.` });
+    renderLab();
+  });
+  $('rngLabLimiar').addEventListener('input', async ev => {
+    const c = E.lab.obter(E.labSel); if (!c) return;
+    c.limiar = Number(ev.target.value) / 100; c.limiarManual = true;
+    $('outLabLimiar').textContent = `${ev.target.value}%`;
+    await E.lab.salvar(c);
+  });
+  $('btnLabAuto').addEventListener('click', async () => {
+    const c = E.lab.obter(E.labSel); if (!c) return;
+    c.limiarManual = false; c.limiar = calibrar(c).limiar; await E.lab.salvar(c); renderLab();
+  });
+  $('btnLabExcluir').addEventListener('click', async () => {
+    const c = E.lab.obter(E.labSel); if (!c) return;
+    if (!confirm(`Excluir ${c.nome} e todas as fotos de exemplo?`)) return;
+    await E.lab.excluir(c.id); E.labSel = null;
+    if (E.localAtivo?.conceito.id === c.id) E.localAtivo = null;
+    renderLab();
+  });
+  $('btnLabExportar').addEventListener('click', () => {
+    baixar(new Blob([JSON.stringify(exportar(E.lab.conceitos, MODELO_EMBEDDING))], { type: 'application/json' }), `sentinela-laboratorio-${carimbo()}.json`);
+  });
+  $('btnLabImportar').addEventListener('click', () => $('labImportar').click());
+  $('labImportar').addEventListener('change', async ev => {
+    const f = ev.target.files[0]; ev.target.value = '';
+    if (!f) return;
+    try {
+      if (f.size > 20 * 2 ** 20) throw new Error('arquivo grande demais');
+      const novos = importar(JSON.parse(await f.text()), MODELO_EMBEDDING);
+      for (const c of novos) await E.lab.salvar(c);
+      $('labStatus').textContent = `${novos.length} conceito(s) importado(s).`;
+      renderLab();
+    } catch (e) { $('labStatus').textContent = `Importação recusada: ${e.message}`; }
+  });
+  renderLab();
 }
 
 /* ═════════════════ DESENHO ═════════════════ */
@@ -399,14 +1051,17 @@ function desenhar(t) {
   const nivel = E.alertas.nivelAtual();
   E.hud.desenhar({
     modo: E.modo, agora: t, nivel, fps: E.fps, infMs: E.infMs, gravando: !!E.gravador, campo: E.campo.ativo,
+    luz: E.luz.media != null ? { ...E.luz.estado(), realce: cfg.realce } : null,
     trilhas: E.modo === 'motorista' ? [] : E.trilhas,
     sentinela: E.modo === 'sentinela' ? {
       zonas: cfg.zonas, zonaEdicao: E.zonaEdicao, poses: E.poses, mostrarPoses: cfg.poses,
       pessoas: s.pessoas, objetos: s.objetos, abandonoS: E.vigilancia.cfg.abandonoS,
+      movimentos: s.movimentos, novos: s.novos, escuro: E.luz.escuro,
+      local: E.localAtivo ? { nome: E.localAtivo.conceito.nome, similaridade: E.localAtivo.similaridade } : null,
       mostrarCalor: cfg.calor, calor: cfg.calor ? E.vigilancia.normalidade.mapaDeCalor() : null, grade: E.vigilancia.normalidade.cfg.grade,
     } : null,
     motorista: E.modo === 'motorista' ? { rosto: E.rosto, metricas: s.metricas } : null,
-    transito: E.modo === 'transito' ? { roi: E.transito.cfg.roi, alvos: s.alvos } : null,
+    transito: E.modo === 'transito' ? { roi: E.transito.cfg.roi, alvos: s.alvos, achados: s.achados } : null,
   });
   if (E.gravador) compor(E.composicao);
 }
@@ -820,7 +1475,15 @@ function atualizarPaineis(t) {
     add('esqueletos', `${m.poses ?? 0}`);
     const n = m.normalidade;
     add('modelo de normalidade', n ? (n.aquecido ? 'ATIVO' : `aprendendo ${Math.min(100, Math.round((100 * n.amostras) / n.alvo))}%`) : '—', '', true);
+    if (cfg.movimento) {
+      add('movimento sem explicação', `${m.movimentos ?? 0}`, m.movimentos && m.escuro ? 'aviso' : '');
+      add('alterações paradas', `${m.alteracoes ?? 0}`, m.alteracoes ? 'aviso' : '');
+    }
     if (cfg.demo) add('preset', 'DEMONSTRAÇÃO — tempos encurtados', 'aviso', true);
+  }
+  if (E.luz.media != null) {
+    const l = E.luz.estado();
+    add('luz da cena', `${Math.round(l.luz * 100)}%${l.escuro ? ` · NOTURNO${cfg.realce ? ` (realce ×${l.ganho.toFixed(1)})` : ''}` : ''}`, l.escuro ? 'aviso' : '', true);
   }
   add('perfil de sensibilidade', NOMES_PERFIL[cfg.perfil] || 'PADRÃO', cfg.perfil === 'padrao' ? '' : 'aviso', true);
   if (E.campo.ativo) {
@@ -839,6 +1502,8 @@ function atualizarPaineis(t) {
   $('rInf').textContent = `${E.infMs.toFixed(0)} ms`;
   $('rBackend').textContent = MODELOS_POR_MODO[E.modo].map(k => `${k} ${E.percepcao?.backend[k] || '…'}`).join(' · ');
   $('rRuntime').textContent = E.percepcao?.fonte || '--';
+  if (E.ultimo.lab == null || t - E.ultimo.lab > 2000) { E.ultimo.lab = t; renderResumoLab(); }
+  $('rLuz').textContent = E.luz.media == null ? '--' : `${Math.round(E.luz.media * 100)}%${E.luz.escuro ? ' ◐ NOTURNO' : ''}`;
   $('rGps').textContent = E.gps.watch == null ? 'desligado' : E.gps.erro ? E.gps.erro : velocidadeGPS() != null ? `${(velocidadeGPS() * 3.6).toFixed(0)} km/h ±${Math.round(E.gps.precisao || 0)} m` : 'aguardando sinal';
 
   // relatório periódico do AGENTE (opcional, em minutos)
@@ -993,15 +1658,23 @@ function ligarControles() {
   document.body.dataset.aba = 'colDir';
 
   $('selCamera').addEventListener('change', async e => {
+    const anterior = cfg.cameras[E.modo];
     if (e.target.value) cfg.cameras[E.modo] = e.target.value; else delete cfg.cameras[E.modo];
     salvarCfg();
-    try { await abrir(E.modo); } catch (er) { logAgente({ nivel: 'aviso', texto: `Câmera: ${er.message}` }); }
+    try { await abrir(E.modo); }
+    catch (er) {
+      // a câmera anterior continua aberta (só é fechada quando a nova abre): volta a escolha para ela
+      if (anterior) cfg.cameras[E.modo] = anterior; else delete cfg.cameras[E.modo];
+      salvarCfg(); await atualizarCameras();
+      logAgente({ nivel: 'aviso', texto: `Câmera: ${er.message}` });
+    }
   });
   $('btnTrocarCam').addEventListener('click', async () => {
-    delete cfg.cameras[E.modo]; salvarCfg();
-    const proximo = E.facing === 'user' ? 'environment' : 'user';
-    cfg.espelhar = null;
-    try { await abrir(E.modo, { deviceId: null, facing: proximo }); } catch (er) { logAgente({ nivel: 'aviso', texto: `Câmera: ${er.message}` }); }
+    try { await trocarCamera(); } catch (er) { logAgente({ nivel: 'aviso', texto: `Câmera: ${er.message}` }); await atualizarCameras(); }
+  });
+  $('btnProcurarCam').addEventListener('click', async () => {
+    await atualizarCameras({ relatar: true });
+    anunciar($('infoCameras').textContent);
   });
   $('btnEspelhar').addEventListener('click', () => {
     const atual = document.body.classList.contains('espelhado');
@@ -1039,7 +1712,43 @@ function ligarControles() {
     logAgente({ nivel: 'sistema', texto: `◈ Alarme silenciado por 30 s${origem ? ` (${origem})` : ''}.` });
   };
   $('btnSilenciar').addEventListener('click', () => silenciar());
-  $('btnEstouBem').addEventListener('click', () => silenciar('condutor confirmou que está bem'));
+  $('btnEstouBem').addEventListener('click', () => (E.checagem.ativa ? botaoSaude('bem') : silenciar('condutor confirmou que está bem')));
+
+  // checagem de saúde e alerta ao responsável
+  $('btnSaudeBem').addEventListener('click', () => botaoSaude('bem'));
+  $('btnSaudeAjuda').addEventListener('click', () => botaoSaude('ajuda'));
+  $('btnPedirAjuda').addEventListener('click', () => botaoSaude('ajuda'));
+  $('btnSaudeFechar').addEventListener('click', () => {
+    if (E.checagem.ativa && E.checagem.estado !== 'escalado') return botaoSaude('bem');   // fechar sem responder = "estou bem"
+    if (E.checagem.ativa) interromperSaude();
+    E.checagem.encerrar(); fecharSaude();
+  });
+  $('dlgSaude').addEventListener('cancel', ev => { ev.preventDefault(); $('btnSaudeFechar').click(); });   // Esc
+  $('btnConfigAlerta').addEventListener('click', configurarAlerta);
+  $('btnTestarAlerta').addEventListener('click', testarAlerta);
+  $('btnMicrofone').addEventListener('click', async () => {
+    const r = await liberarMicrofone();
+    $('infoSaude').textContent = r.ok
+      ? `Microfone liberado.${escutaDisponivel() ? '' : ' Atenção: este navegador não reconhece fala — a checagem usará só os botões (use Chrome, Edge ou Safari).'}`
+      : `Microfone: ${r.erro}`;
+  });
+  $('btnCancelarAlerta').addEventListener('click', () => $('dlgAlerta').close());
+  $('formAlerta').addEventListener('submit', ev => {
+    ev.preventDefault();
+    const url = $('inpReleUrl').value.trim(), token = $('inpReleToken').value.trim();
+    const erro = msg => { const p = $('alertaErro'); p.hidden = false; p.textContent = msg; };
+    if (url && !/^https:\/\//.test(url)) return erro('O endereço do relé precisa começar com https://');
+    if (token && token.length < 16) return erro('O token do aparelho tem no mínimo 16 caracteres (o mesmo do RELE_TOKENS).');
+    Object.assign(cfg.alerta, {
+      motorista: $('inpMotorista').value.trim().slice(0, 80), veiculo: $('inpVeiculo').value.trim().slice(0, 40),
+      url, token, telefone: $('inpTelResponsavel').value.trim().slice(0, 30),
+      semResposta: $('chkSemResposta').checked, local: $('chkLocalAlerta').checked,
+    });
+    E.checagem.cfg.escalarSemResposta = cfg.alerta.semResposta;
+    salvarCfg(); estadoRele();
+    $('dlgAlerta').close();
+    logAgente({ nivel: 'sistema', texto: `◈ Alerta ao responsável: ${releConfigurado() ? 'relé configurado' : 'sem relé (só os botões LIGAR)'}${cfg.alerta.semResposta ? ' · avisa se o motorista não responder' : ''}.` });
+  });
   const voz = $('btnVoz');
   const aplicarVoz = () => { voz.setAttribute('aria-pressed', String(cfg.voz)); voz.textContent = cfg.voz ? '🗣 VOZ LIGADA' : '🗣 VOZ DESLIGADA'; E.sirene.vozLigada = cfg.voz; };
   aplicarVoz();
@@ -1069,6 +1778,8 @@ function ligarControles() {
   chk('chkCalor', 'calor');
   chk('chkDemo', 'demo', aplicarPerfil);
   chk('chkGPSmov', 'gpsMov');
+  chk('chkRealce', 'realce');
+  chk('chkMovimento', 'movimento', () => { E.mov.reiniciar(); E.cena = null; });
   renderZonas();
 
   $('btnRecalibrar').addEventListener('click', () => {
@@ -1198,7 +1909,9 @@ function anotar(rotulo) {
 }
 
 // ?debug=1 expõe o estado no console do navegador (diagnóstico de campo)
-if (new URLSearchParams(location.search).has('debug')) window.SPY = { E, cfg };
+if (new URLSearchParams(location.search).has('debug')) window.SPY = { E, cfg, checagem: motivo => iniciarChecagem(motivo, null) };
 
 ligarControles();
+ligarLaboratorio();
+observarCameras();
 boot().catch(e => erroBoot(e.message));

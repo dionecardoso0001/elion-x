@@ -19,7 +19,7 @@ export async function detectarServidor(base = 'api/spy/') {
     const r = await fetch(`${base}estado`, { cache: 'no-store' });
     if (!r.ok) return { disponivel: false };
     const j = await r.json();
-    return { disponivel: !!j.disponivel, exigeToken: !!j.exige_token, modelo: j.modelo || null };
+    return { disponivel: !!j.disponivel, exigeToken: !!j.exige_token, modelo: j.modelo || null, rele: !!j.rele?.configurado };
   } catch { return { disponivel: false }; }
 }
 

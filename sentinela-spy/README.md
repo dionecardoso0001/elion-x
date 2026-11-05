@@ -8,9 +8,9 @@ tempo e responde às perguntas do operador.
 
 | Missão | O que os detectores veem | O que o agente acrescenta |
 |---|---|---|
-| **SENTINELA** | intrusão em zona restrita, permanência, objeto abandonado ou retirado, queda, corrida, aglomeração, objeto de risco, comportamento atípico para a cena (modelo estatístico de normalidade) | veredito (anomalia confirmada · provável falso alarme · inconclusivo), evidências, hipóteses alternativas, divergências com o detector, ação recomendada |
-| **MOTORISTA** | fadiga (PERCLOS, microssono, bocejo), distração, celular, possível mal-estar | sinais observáveis, sem diagnóstico |
-| **TRÂNSITO** | risco de colisão (TTC), distância, pedestre, animal ou objeto na pista | leitura da cena e da visibilidade |
+| **SENTINELA** | intrusão em zona restrita, **local restrito ensinado com fotos**, permanência, **objeto esquecido de qualquer tipo** (não só os do COCO), retirada, queda, corrida, aglomeração, objeto de risco, comportamento atípico, **movimento no escuro** | veredito (anomalia confirmada · provável falso alarme · inconclusivo), evidências, hipóteses alternativas, divergências com o detector, ação recomendada |
+| **MOTORISTA** | fadiga (PERCLOS, microssono, bocejo), distração, celular, **mão no peito, mão nos olhos por mais de 3 s**, cabeça tombada | **checagem de saúde por voz** e **aviso ao responsável por WhatsApp e e-mail**, com localização; sinais observáveis, sem diagnóstico |
+| **TRÂNSITO** | risco de colisão (TTC), distância, pedestre, objeto na pista, **fauna: cão de qualquer porte, cobra, boi/vaca, galinha, aves, veado (provável), tatu, jabuti, jacaré…** | leitura da cena e da visibilidade |
 
 > ⚠️ Assistente de atenção, **não** é ADAS/DMS homologado nem sistema de segurança
 > certificado. Não freia, não substitui o motorista nem a vigilância humana.
@@ -59,6 +59,58 @@ gasta o seu crédito da API.
 
 ---
 
+## Recursos de campo
+
+### Câmeras do computador
+Todas as câmeras conectadas aparecem pelo nome no seletor do painel **SENSOR ÓPTICO**: a integrada, uma USB como a MX ou uma câmera virtual. O nome fica sem o código USB que o Chrome acrescenta no Windows. Uma câmera plugada ou removida com a operação em curso entra ou sai da lista sozinha. No PC, o botão vira **⇄ PRÓXIMA CÂMERA**. Se outro programa estiver usando a câmera (Teams, Zoom, OBS, Logi Tune), a tela explica o que fazer.
+
+### Visão no escuro
+Com pouca luz (abaixo de 20%), a imagem que vai aos detectores é **clareada automaticamente**, com ganho limitado a 8×, e o HUD mostra **VISÃO NOTURNA**. Um sensor de movimento com **fundo duplo** acusa **MOVIMENTO NO ESCURO** quando nenhuma pessoa, animal ou veículo detectado explica o movimento. Em zona restrita, o alerta é crítico. O limite desse sensor se adapta ao chuvisco da câmera, e uma troca brusca de luz não conta como movimento.
+
+**Limite físico:** câmera comum sem luz nenhuma não enxerga. Escuro total exige câmera com infravermelho.
+
+### Objeto esquecido de qualquer tipo
+O mesmo fundo duplo acha **o que mudou na cena e parou**: caixa, jaqueta, ferramenta. Não depende de o objeto estar entre as categorias do detector. O dono é quem passou pelo local nos 10 s anteriores. Se ele se afasta, sai **POSSÍVEL OBJETO ESQUECIDO**. Objeto parado desde o início e sem dono (o notebook que sempre esteve na mesa) é tratado como parte do ambiente, não como abandonado.
+
+### Fauna na pista
+Um segundo modelo, o classificador EfficientNet-Lite0, com as 1.000 classes do ImageNet, refina cada animal detectado. "Ave" vira GALINHA/GALO, "vaca" vira BOI/VACA, e 118 raças de cão viram CÃO. Ele também varre trechos do corredor em busca do que o detector não conhece, como COBRA e TATU, exigindo 2 leituras seguidas.
+
+Para cão pequeno e galinha distantes, uma segunda passada do detector olha o trecho distante em resolução maior. O porte decide o nível:
+- **Animal grande:** crítico.
+- **Animal pequeno:** aviso, com a orientação "reduza, não desvie bruscamente".
+
+**VEADO** não existe no COCO nem no ImageNet: entra como "provável" (antílopes). O caminho certo para veado é o laboratório, com fotos suas.
+
+### Checagem de saúde do motorista → aviso ao responsável
+Os gatilhos são mão no peito por 2,5 s, mão nos olhos por mais de 3 s, cabeça tombada ou rosto fora de visão. A plataforma **pergunta por voz** se o motorista está bem e mostra dois botões grandes.
+
+| Resposta | O que acontece |
+|---|---|
+| "estou bem" | encerra |
+| "preciso de ajuda" ou sintoma | **avisa o responsável na hora** |
+| **silêncio duas vezes** | **avisa também**, porque desmaio e AVC não respondem |
+
+O aviso sai por **WhatsApp (API oficial da Meta) e e-mail**, com o link da localização, através de um relé que guarda as credenciais e os destinatários.
+
+Depois do aviso, o agente conversa para colher sintomas e orientar segurança (pisca-alerta, parar, 192). Sintomas novos viram atualização ao responsável.
+
+Passo a passo das contas e do relé: **[ALERTAS.md](ALERTAS.md)**.
+
+### Laboratório de modelo
+Em **⚗ ABRIR LABORATÓRIO**, você ensina com fotos suas:
+- **LOCAL RESTRITO:** quando a câmera vê esse lugar com uma pessoa, dispara intrusão.
+- **CLASSE NOVA:** por exemplo, VEADO no trânsito.
+
+**Como funciona:**
+- Cada foto vira um vetor de características (MobileNet-V3).
+- Fotos **negativas** ("parecido, mas liberado") afinam o reconhecimento.
+- O limiar é calibrado por validação, e a tela mostra a qualidade.
+- **✖ ÚLTIMO ALARME FOI FALSO** transforma o quadro do alarme em exemplo negativo, com um toque.
+- Exporte e importe em JSON para levar a outros aparelhos.
+- Tudo fica só neste aparelho.
+
+---
+
 ## Arquitetura
 
 ```
@@ -76,6 +128,13 @@ câmera ─▶ MediaPipe (WASM, no aparelho) ─▶ rastreador multialvo ─▶ 
 | `js/spy/cliente.js` | transporte: modo servidor (`/api/spy/mensagens`) ou chave própria (SDK oficial no navegador) |
 | `js/spy/incidentes.js` | registro persistente de incidentes (IndexedDB), exportação JSON |
 | `js/percepcao.js` … `js/vigilancia.js` | núcleo de visão (rastreador, analisadores, alertas, HUD, sirene) |
+| `js/cameras.js` | lista, nomes e troca de câmeras; erros de câmera traduzidos |
+| `js/escuro.js` | monitor de luz, realce, sensor de movimento com fundo duplo |
+| `js/fauna.js` | segundo estágio da fauna (ImageNet → categorias), varredura do corredor, segunda passada no trecho distante |
+| `js/saude.js`, `js/escuta.js` | checagem de saúde (máquina de estados) e reconhecimento de fala |
+| `js/laboratorio.js`, `js/spy/labdb.js` | laboratório de modelo: conceitos, calibração, exportação; armazenamento local |
+| `js/spy/alerta.js` | envio ao relé com novas tentativas e fila sem internet |
+| `notificacao.mjs`, `rele/` | relé de aviso ao responsável (WhatsApp Cloud API, Resend ou Gmail API, webhook), em Node ou Cloudflare Worker |
 | `server.mjs`, `estaticos.mjs` | servidor próprio: lista de permissão, brotli/gzip, ETag, CSP; agente com a chave no servidor |
 | `scripts/preparar.mjs` | runtime MediaPipe local, SDK empacotado para o navegador, modelos com SHA-256 |
 | `scripts/build.mjs` | `dist/` para hospedagem estática |
@@ -154,7 +213,8 @@ a latência dos testes dirigidos.
 
 ## Qualidade — o que foi verificado
 
-- **93 testes automatizados** (`npm test`), entre eles:
+- **163 testes automatizados** (`npm test`), entre eles:
+  - Câmeras, escuro (quadros sintéticos com ruído de sensor), fauna (os 285 rótulos conferidos contra a lista do próprio modelo), mãos e checagem de saúde, relé (formatos de WhatsApp, Resend e Gmail conferidos na documentação oficial) e laboratório.
   - Núcleo de visão com cenários físicos sintéticos.
   - Cérebro do agente: esquemas dentro das restrições de saída estruturada, laço de
     ferramentas, recusa, fallback e histórico só crescente.
@@ -172,7 +232,22 @@ a latência dos testes dirigidos.
 - **axe-core 4.14, WCAG 2.2 A/AA:** 0 violações no desktop, no celular (Pixel 7) e com o
   diálogo de configuração aberto. Sem rolagem horizontal.
 
+- **Ponta a ponta no Chromium (novos recursos):**
+  - Duas câmeras: listadas pelo nome e trocadas pelo seletor e pelo botão.
+  - Vídeo escuro (4% de luz): o modo noturno liga sozinho e dispara MOVIMENTO NO ESCURO.
+  - Trânsito: "ANIMAL NA PISTA: CÃO" em crítico e "GATO" em aviso.
+  - Checagem de saúde, com fala e reconhecimento simulados e relé interceptado: silêncio, "estou bem", sintoma e botão.
+  - Laboratório: 5 fotos → reconhecimento a 95% → intrusão → falso alarme vira negativa → o alarme para.
+  - Simulação do GitHub Pages: nenhuma origem externa contatada.
+  - axe-core: 0 violações WCAG 2.2 AA nos diálogos novos e no celular.
+- **Privacidade verificada:** o MediaPipe tenta enviar telemetria a `odml.pa.googleapis.com`, e a CSP bloqueia esse envio.
+
 **Ainda não verificado:**
+
+- Envio **real** de WhatsApp e e-mail: depende das contas (ver ALERTAS.md).
+- Reconhecimento de fala real nos navegadores.
+- Cobra e veado em imagem real.
+- Câmera infravermelha.
 
 - Chamada **real** à API da Anthropic: depende da sua chave. Os testes usam uma API
   simulada, de propósito, sem custo.
@@ -186,7 +261,7 @@ a latência dos testes dirigidos.
 
 Código: MIT (`LICENSE`). Terceiros:
 
-- MediaPipe Tasks Vision (Apache-2.0).
+- MediaPipe Tasks Vision (Apache-2.0). Modelos EfficientDet-Lite0, EfficientNet-Lite0 (ImageNet), MobileNet-V3, Face e Pose Landmarker, publicados pelo Google.
 - `@anthropic-ai/sdk` (MIT, `vendor/anthropic-sdk.LICENSE.txt` após `npm run preparar`).
 - Fontes Orbitron, Rajdhani e Share Tech Mono (SIL OFL-1.1, `fontes/LICENSE-*.txt`).
 - Modelos de visão do MediaPipe: consulte os *model cards* de cada um.

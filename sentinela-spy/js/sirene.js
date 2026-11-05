@@ -112,8 +112,9 @@ export class Sirene {
   }
 
   /** Fala em pt-BR; a sirene abaixa enquanto fala. Resolve ao terminar. */
-  falar(texto, { urgente = false } = {}) {
-    if (!this.vozLigada || !texto || !('speechSynthesis' in window)) return Promise.resolve();
+  /** forcar: a checagem de saúde fala mesmo com a voz geral desligada — é o único canal com quem dirige. */
+  falar(texto, { urgente = false, forcar = false } = {}) {
+    if ((!this.vozLigada && !forcar) || !texto || !('speechSynthesis' in window)) return Promise.resolve();
     return new Promise(resolve => {
       const u = new SpeechSynthesisUtterance(texto);
       u.lang = 'pt-BR';
