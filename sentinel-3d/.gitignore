@@ -1,0 +1,7 @@
+# O .gitignore da raiz ignora "src/" (versões antigas do ELION-X) em qualquer nível;
+# aqui src/ é o código-fonte do SENTINEL 3D e deve ser versionado.
+!src/
+
+# Dados de execução (incidentes, eventos, auditoria) e dependências
+data/
+node_modules/
