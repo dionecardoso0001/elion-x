@@ -14,40 +14,33 @@
  *    privado/loopback/link-local, a auditoria é RECUSADA. Isto impede que um
  *    pedido em voz ("audita o site X") seja desviado para a rede de casa, o
  *    roteador, ou o endpoint de metadados de nuvem — o buraco clássico de SSRF.
+ *    A regra mora em rede-segura.mjs: o IP é conferido em CADA conexão (não só
+ *    no começo) e em cada redirecionamento, e o TLS conecta no IP já verificado.
  *  · Os "caminhos sensíveis" são só CONFERIDOS (o arquivo responde 200?), nunca
  *    baixados nem interpretados além do indício. Saber que /.git/ está exposto
  *    é defesa; puxar o repositório seria outra coisa.
  *
- * Tudo em Node puro (tls, dns, net) — sem dependência externa.
+ * Tudo em Node puro (tls, net) — sem dependência externa.
  */
 import tls from 'tls';
 import net from 'net';
-import dns from 'dns/promises';
+import redePadrao, { ErroSSRF, lookupFixo } from './rede-segura.mjs';
 
 const UA = 'ELION-X/1.0 (auditoria de seguranca defensiva; blue-team)';
 
-/* Mesma lógica de SSRF do resto da plataforma: o texto do host não basta,
-   porque um domínio público pode resolver para IP interno. Confere o IP real. */
-const ipPrivado = ip => {
-  if (net.isIPv4(ip)) {
-    const [a, b] = ip.split('.').map(Number);
-    return a === 10 || a === 127 || a === 0 ||
-           (a === 172 && b >= 16 && b <= 31) ||
-           (a === 192 && b === 168) ||
-           (a === 169 && b === 254) ||
-           (a === 100 && b >= 64 && b <= 127);
+/* O texto do host não basta, porque um domínio público pode resolver para IP
+   interno: confere o IP real. Devolve os endereços verificados, que o TLS usa
+   para conectar sem resolver o nome de novo. */
+async function garantirPublico(host, rede) {
+  try { return await rede.resolverPublico(host); }
+  catch (e) {
+    if (e instanceof ErroSSRF) {
+      const quem = !e.ip || e.ip === host ? `${host} é um endereço interno` : `"${host}" aponta para um endereço interno (${e.ip})`;
+      throw new ErroSSRF(`${quem}: ${e.motivo || e.message} — auditoria recusada por segurança`,
+        { host, ip: e.ip, motivo: e.motivo, cause: e });
+    }
+    throw new Error(`não consegui resolver "${host}": ${e.message}`);
   }
-  const s = ip.toLowerCase();
-  return s === '::1' || s.startsWith('fc') || s.startsWith('fd') || s.startsWith('fe80') || s === '::';
-};
-
-async function garantirPublico(host) {
-  let ips;
-  try { ips = (await dns.lookup(host, { all: true })).map(r => r.address); }
-  catch (e) { throw new Error(`não consegui resolver "${host}": ${e.message}`); }
-  const interno = ips.find(ipPrivado);
-  if (interno) throw new Error(`"${host}" aponta para um endereço interno (${interno}) — auditoria recusada por segurança`);
-  return ips;
 }
 
 /* ── 1. CABEÇALHOS DE SEGURANÇA ────────────────────────────────────────────
@@ -115,9 +108,16 @@ function auditarCookies(headers) {
 /* ── 4. CERTIFICADO TLS ─────────────────────────────────────────────────────
    Protocolo velho (TLS 1.0/1.1) é quebrável; certificado vencendo é queda de
    serviço marcada na agenda. */
-function auditarTLS(host, port = 443) {
+function auditarTLS(host, port = 443, enderecos = []) {
+  const ipLiteral = net.isIP(host) !== 0;
   return new Promise(resolve => {
-    const s = tls.connect({ host, port, servername: host, timeout: 12000, rejectUnauthorized: false }, () => {
+    const s = tls.connect({
+      host, port, timeout: 12000, rejectUnauthorized: false,
+      servername: ipLiteral ? undefined : host,             // SNI não aceita IP (RFC 6066)
+      // ⚠ conecta no IP JÁ verificado, sem nova consulta de DNS (anti-rebinding).
+      //   IP literal não passa por lookup e já foi conferido por garantirPublico.
+      lookup: ipLiteral ? undefined : lookupFixo(enderecos),
+    }, () => {
       const c = s.getPeerCertificate();
       const proto = s.getProtocol();
       const autorizado = s.authorized;
@@ -157,11 +157,11 @@ const CAMINHOS = [
   { p: '/.svn/entries', o: 'repositório SVN exposto', peso: 2 },
 ];
 
-async function conferirCaminhos(base) {
+async function conferirCaminhos(base, rede) {
   const origem = new URL(base).origin;
   const achar = async ({ p, o, peso }) => {
     try {
-      const r = await fetch(origem + p, {
+      const r = await rede.fetchSeguro(origem + p, {
         method: 'GET', redirect: 'manual', headers: { 'User-Agent': UA },
         signal: AbortSignal.timeout(7000),
       });
@@ -197,30 +197,39 @@ function darNota(pesoTotal) {
 /**
  * Auditoria completa de um site. Só http/https, só host público, só GET.
  * @param {string} alvo  URL do site a auditar
+ * @param {object} [opcoes]
+ * @param {object} [opcoes.rede]  instância de rede-segura.mjs; os testes injetam
+ *   uma com DNS simulado. A plataforma usa sempre a padrão.
  */
-export async function auditarSite(alvo) {
+export async function auditarSite(alvo, { rede = redePadrao } = {}) {
   let url;
   try { url = new URL(/^https?:\/\//i.test(alvo) ? alvo : 'https://' + alvo); }
   catch { throw new Error(`URL inválida: ${alvo}`); }
   if (!/^https?:$/.test(url.protocol)) throw new Error('só posso auditar endereços http/https');
 
   const host = url.hostname;
-  await garantirPublico(host);                       // ⚠ trava de SSRF — antes de qualquer requisição
+  const hostConexao = host.replace(/^\[(.*)\]$/, '$1');                  // IPv6 vem entre colchetes na URL
+  const enderecos = await garantirPublico(hostConexao, rede);            // ⚠ trava de SSRF — antes de qualquer requisição
 
-  // requisição principal ao alvo
+  // requisição principal ao alvo. fetchSeguro confere o IP em cada conexão e
+  // em cada redirecionamento: um 302 para dentro da rede é recusado no salto.
   let resp, headers, corpoLen = 0, statusPrincipal;
   try {
-    resp = await fetch(url.href, { method: 'GET', redirect: 'follow', headers: { 'User-Agent': UA },
+    resp = await rede.fetchSeguro(url.href, { method: 'GET', redirect: 'follow', headers: { 'User-Agent': UA },
       signal: AbortSignal.timeout(15000) });
     headers = resp.headers;
     statusPrincipal = resp.status;
     corpoLen = (await resp.text()).length;
-  } catch (e) { throw new Error(`não consegui alcançar ${host}: ${e.message}`); }
+  } catch (e) {
+    if (e instanceof ErroSSRF)
+      throw new ErroSSRF(`auditoria recusada por segurança: ${e.message}`, { host: e.host, ip: e.ip, motivo: e.motivo, cause: e });
+    throw new Error(`não consegui alcançar ${host}: ${e.message}`);
+  }
 
   const httpsForcado = url.protocol === 'https:';
   const [tlsInfo, caminhos] = await Promise.all([
-    httpsForcado ? auditarTLS(host, +url.port || 443) : Promise.resolve({ erro: 'site servido em HTTP puro — sem TLS' }),
-    conferirCaminhos(url.href),
+    httpsForcado ? auditarTLS(hostConexao, +url.port || 443, enderecos) : Promise.resolve({ erro: 'site servido em HTTP puro — sem TLS' }),
+    conferirCaminhos(url.href, rede),
   ]);
 
   const cab = auditarCabecalhos(headers);

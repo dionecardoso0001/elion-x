@@ -21,6 +21,7 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { sigScan, scan as securityScan } from './security.mjs';
 import { auditarSite } from './sitescan.mjs';
+import { fetchSeguro, ErroSSRF } from './rede-segura.mjs';
 import {
   registrarResultado, gravarLicao, esquecerLicao, autoexameNarrado,
   blocoAutoconhecimento, blocoAutoconhecimentoCurto, relatorioDesempenho,
@@ -4573,11 +4574,13 @@ IMPORTANTE: responda com JSON CRU, sem cercas de código markdown (nada de crase
          /sorry/ (captcha), que NÃO manda X-Frame-Options. Resultado: o teste
          dizia "pode embutir", o navegador ia à URL ORIGINAL, levava bloqueio e
          o operador via uma tela em branco sem explicação.
-         Agora sigo os saltos À MÃO e recuso se QUALQUER etapa bloquear. */
+         Agora sigo os saltos À MÃO e recuso se QUALQUER etapa bloquear.
+         Cada salto passa pela trava de SSRF (fetchSeguro): o visor nunca faz o
+         servidor bater num endereço interno. */
       try {
         let atual = target, salto = 0, xfo = '', csp = '', ultima = null;
         while (salto++ < 5) {
-          const r = await fetch(atual, {
+          const r = await fetchSeguro(atual, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36' },
             redirect: 'manual', signal: AbortSignal.timeout(9000),
           });
@@ -4600,7 +4603,8 @@ IMPORTANTE: responda com JSON CRU, sem cercas de código markdown (nada de crase
         return json(res, 200, { frameable: !bloqueado && !desviou, finalUrl: atual,
                                 motivo: bloqueado ? 'x-frame-options/CSP' : desviou ? 'desvio anti-robô' : '' });
       } catch (e) {
-        return json(res, 200, { frameable: false, error: e.message });
+        return json(res, 200, { frameable: false, error: e.message,
+                                motivo: e instanceof ErroSSRF ? 'endereço interno bloqueado' : '' });
       }
     }
 
@@ -4608,8 +4612,10 @@ IMPORTANTE: responda com JSON CRU, sem cercas de código markdown (nada de crase
     if (req.method === 'GET' && url.pathname === '/api/reader') {
       const target = url.searchParams.get('url') || '';
       if (!/^https?:\/\//i.test(target)) return json(res, 400, { error: 'url inválida' });
+      /* Mesma trava do /api/proxy. Sem ela, o botão LEITURA lia pelo servidor a
+         página interna que o proxy acabara de recusar. */
       try {
-        const r = await fetch(target, {
+        const r = await fetchSeguro(target, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
             'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
@@ -4634,6 +4640,7 @@ IMPORTANTE: responda com JSON CRU, sem cercas de código markdown (nada de crase
         let site = ''; try { site = new URL(r.url).hostname.replace(/^www\./, ''); } catch {}
         return json(res, 200, { title, site, image, desc, paragraphs, url: r.url });
       } catch (e) {
+        if (e instanceof ErroSSRF) return json(res, 403, { error: `endereço bloqueado por segurança: ${e.message}` });
         return json(res, 502, { error: `falha ao ler a página: ${e.message}` });
       }
     }
@@ -4703,14 +4710,13 @@ IMPORTANTE: responda com JSON CRU, sem cercas de código markdown (nada de crase
     if (req.method === 'GET' && url.pathname === '/api/proxy') {
       const target = url.searchParams.get('url') || '';
       if (!/^https?:\/\//i.test(target)) { res.writeHead(400); return res.end('url inválida'); }
-      // proteção SSRF: bloqueia hosts internos/privados
-      let host = '';
-      try { host = new URL(target).hostname; } catch { res.writeHead(400); return res.end('url inválida'); }
-      if (/^(localhost$|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.0\.0\.0|\[?::1\]?$)/i.test(host)) {
-        res.writeHead(403); return res.end('host bloqueado');
-      }
+      try { new URL(target); } catch { res.writeHead(400); return res.end('url inválida'); }
+      /* proteção SSRF: a regra de TEXTO que morava aqui deixava passar
+         [::ffff:127.0.0.1] e qualquer domínio que resolvesse para IP interno, e o
+         redirect:'follow' levava a requisição para dentro. fetchSeguro confere o
+         IP de cada conexão e de cada redirecionamento (rede-segura.mjs). */
       try {
-        const r = await fetch(target, {
+        const r = await fetchSeguro(target, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
@@ -4776,6 +4782,7 @@ IMPORTANTE: responda com JSON CRU, sem cercas de código markdown (nada de crase
            escada achava que deu certo e parava ali — o operador ficava com
            "fetch failed" na cara e nenhuma saída. Agora aviso o visor, que
            desce até a mensagem com o botão de abrir no navegador. */
+        if (e instanceof ErroSSRF) { res.writeHead(403); return res.end('host bloqueado'); }
         const causa = (e.cause?.code === 'ECONNREFUSED' || /ECONNREFUSED/.test(e.message))
           ? 'o endereço não aceitou conexão (o domínio pode não existir)'
           : /timeout|aborted/i.test(e.message) ? 'o site demorou demais para responder'

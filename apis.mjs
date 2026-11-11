@@ -19,8 +19,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import dns from 'dns/promises';
-import net from 'net';
+import { fetchSeguro, conferirUrl } from './rede-segura.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
@@ -82,24 +81,12 @@ export function total() { return carregar().length; }
 
 /* ── proteção contra SSRF ──────────────────────────────────────────────────
    Bloquear por texto ("localhost", "127.") não basta: um domínio público pode
-   resolver para IP privado (DNS rebinding). Por isso resolvemos o host e
-   conferimos o IP de verdade antes de deixar a requisição sair. */
-const privado = ip => {
-  if (net.isIPv4(ip)) {
-    const [a, b] = ip.split('.').map(Number);
-    return a === 10 || a === 127 || a === 0 ||
-           (a === 172 && b >= 16 && b <= 31) ||
-           (a === 192 && b === 168) ||
-           (a === 169 && b === 254) ||
-           (a === 100 && b >= 64 && b <= 127);
-  }
-  const s = ip.toLowerCase();
-  return s === '::1' || s.startsWith('fc') || s.startsWith('fd') || s.startsWith('fe80');
-};
-
-async function verificarDestino(u) {
-  const url = new URL(u);
-  if (!/^https?:$/.test(url.protocol)) throw new Error('só http/https são permitidos');
+   resolver para IP privado (DNS rebinding). A regra mora em rede-segura.mjs:
+   conferirUrl() barra protocolo e IP literal aqui; o IP do nome é conferido na
+   PRÓPRIA conexão pelo fetchSeguro(), inclusive após redirecionamento — então
+   não existe janela entre a checagem e a conexão. */
+function verificarDestino(u) {
+  const url = conferirUrl(u);
   const host = url.hostname.replace(/^www\./, '').toLowerCase();
 
   // lista de permissão: o host tem de ser (ou ser subdomínio de) um do catálogo
@@ -109,21 +96,15 @@ async function verificarDestino(u) {
     throw new Error(`domínio "${host}" não está no catálogo de APIs públicas. ` +
       `Esta ferramenta só alcança as 796 APIs catalogadas — use buscar_api para achar a certa.`);
   }
-
-  let ips = [];
-  try { ips = (await dns.lookup(host, { all: true })).map(r => r.address); }
-  catch (e) { throw new Error(`não consegui resolver "${host}": ${e.message}`); }
-  const ruim = ips.find(privado);
-  if (ruim) throw new Error(`"${host}" resolve para endereço interno (${ruim}) — bloqueado`);
   return url;
 }
 
 /** Chama uma API do catálogo. Somente GET, somente domínio catalogado. */
 export async function consultar(endpoint, { limite = 12000 } = {}) {
   carregar();
-  const url = await verificarDestino(String(endpoint || '').trim());
+  const url = verificarDestino(String(endpoint || '').trim());
 
-  const r = await fetch(url, {
+  const r = await fetchSeguro(url, {
     method: 'GET',
     headers: { 'User-Agent': UA, Accept: 'application/json, text/plain, */*' },
     redirect: 'follow',
