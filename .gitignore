@@ -48,8 +48,19 @@ server/
 vite.config.js
 avatar-test.html
 
-# Ferramental local do editor/agente
-.claude/
+# Ferramental local do editor/agente — exceto as duas skills de projeto
+# versionadas de propósito: watch (terceiros, MIT, fixada e revisada) e
+# video-kb (própria). Todo o resto de .claude/ (settings.local.json, skills
+# pessoais, caches) continua ignorado.
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/watch/
+!.claude/skills/video-kb/
+
+# Bytecode gerado ao executar os scripts Python das skills
+__pycache__/
+*.pyc
 
 # Backups do proprio codigo — dois server.js no repositorio confundem quem le,
 # e o backup carrega uma copia velha do prompt de persona (dados pessoais)
